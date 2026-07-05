@@ -27,10 +27,10 @@ modules:
         npm_config_cache: /run/build/draughtsmind-pro/flatpak-node/npm-cache
         XDG_CACHE_HOME: /run/build/draughtsmind-pro/flatpak-node/cache
     sources:
-      # NOTA: troque "tag: v1.0.2" pela tag real depois de publicar no GitHub
+      # NOTA: troque "tag: v1.0.3" pela tag real depois de publicar no GitHub
       - type: git
         url: https://github.com/salemnopturn/DraughtsMind-Pro.git
-        tag: v1.0.2
+        tag: v1.0.3
       # generated-sources.json é gerado a partir de flatpak/electron-package-lock.json
       # (um package-lock.json MÍNIMO, só com "electron" como dependência normal — não é
       # o package-lock.json da raiz do projeto, que tem electron em devDependencies e por
@@ -47,13 +47,13 @@ modules:
       # electron como dependência normal. Isso deixa "npm install --production" instalar
       # exclusivamente o electron (sem o electron-builder inteiro, que não roda dentro do
       # Flatpak final) e evita totalmente o erro de "electron só pode estar em devDependencies".
-      - cp package.json /tmp/app-package.json
+      - cp package.json app-package.json.bak
       - cp flatpak/electron-package.json package.json
       - cp flatpak/electron-package-lock.json package-lock.json
       - npm ci --omit=dev --offline
       - mkdir -p /app/lib/draughtsmind-pro
       - cp -r main preload renderer engine rules assets node_modules /app/lib/draughtsmind-pro/
-      - cp /tmp/app-package.json /app/lib/draughtsmind-pro/package.json
+      - cp app-package.json.bak /app/lib/draughtsmind-pro/package.json
       - chmod +x /app/lib/draughtsmind-pro/node_modules/electron/dist/electron
       - mkdir -p /app/bin
       - |
