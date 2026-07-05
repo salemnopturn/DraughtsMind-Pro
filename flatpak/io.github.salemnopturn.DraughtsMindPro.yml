@@ -26,10 +26,10 @@ modules:
         npm_config_offline: 'true'
         npm_config_cache: /run/build/draughtsmind-pro/npm-cache
     sources:
-      # NOTA: troque "tag: v1.0.0" pela tag real depois de publicar no GitHub
+      # NOTA: troque "tag: v1.0.1" pela tag real depois de publicar no GitHub
       - type: git
         url: https://github.com/salemnopturn/DraughtsMind-Pro.git
-        tag: v1.0.0
+        tag: v1.0.1
       # generated-sources.json é gerado a partir de flatpak/electron-package-lock.json
       # (um package-lock.json MÍNIMO, só com "electron" como dependência normal — não é
       # o package-lock.json da raiz do projeto, que tem electron em devDependencies e por
