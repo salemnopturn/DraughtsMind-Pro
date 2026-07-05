@@ -1,0 +1,7 @@
+node_modules/
+build/dist/
+.flatpak-builder/
+builddir/
+*.flatpak
+*.log
+.DS_Store

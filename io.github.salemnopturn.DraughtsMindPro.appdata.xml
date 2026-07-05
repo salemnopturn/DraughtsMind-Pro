@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.salemnopturn.DraughtsMindPro</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>DraughtsMind Pro</name>
+  <summary>Elite Brazilian Draughts AI Engine</summary>
+  <description>
+    <p>
+      DraughtsMind Pro is a powerful, offline-capable Brazilian Draughts AI engine
+      built with Electron. It features a PVS+LMR+NMP+IID search engine with Zobrist
+      64-bit hashing, 3100+ line opening book from Brazilian Championships, full CBD
+      rule compliance, PDN import/export, real-time analysis, and the official Tablita mode.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Advanced AI engine with iterative deepening and alpha-beta pruning</li>
+      <li>3100+ opening lines from Brazilian Championships</li>
+      <li>Full Brazilian draughts rules compliance (CBD)</li>
+      <li>PDN import/export with variation support</li>
+      <li>Real-time analysis and evaluation</li>
+      <li>Official Tablita mode for competitive play</li>
+      <li>Multiple game modes: Human vs Human, Human vs CPU, CPU vs CPU, Sandbox</li>
+      <li>Chess clock with multiple time controls</li>
+      <li>100% offline — no internet required</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.salemnopturn.DraughtsMindPro.desktop</launchable>
+  <url type="homepage">https://github.com/salemnopturn/DraughtsMind-Pro</url>
+  <url type="bugtracker">https://github.com/salemnopturn/DraughtsMind-Pro/issues</url>
+  <developer id="io.github.salemnopturn">
+    <name>DraughtsMind Team</name>
+  </developer>
+  <content_rating type="oars-1.1">
+    <content_attribute id="violence-fantasy">none</content_attribute>
+  </content_rating>
+  <releases>
+    <release version="1.0.0" date="2026-07-05">
+      <description>
+        <p>Initial release of DraughtsMind Pro with full Tablita mode support.</p>
+      </description>
+    </release>
+  </releases>
+</component>

@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<!--
+⛃ DraughtsMind Pro — Knowledge Base Integration ⛃
+
+Motor de IA de alto desempenho para Damas Brasileiras (regra CBD). 100% offline no navegador.
+
+Features:
+• Engine reengineered: Zobrist 64-bit BigInt, TT compacta 262K (2-way Uint32Array), PVS+LMR+NMP+IID+qsearch
+• Avaliação com PST + centro + borda
+• Board Editor embutido: edite posições livremente antes de jogar
+• Livro de Aberturas Master com +3.100 linhas maximais
+• Fidelidade CBD: Lei da Maioria, tripla repetição, regra dos 20 lances, finais Art.59/100
+• PDN import/export, análise em tempo real, árvore de variantes
+• Modo Tablita: partidas rápidas em sequência
+
+🔗 Código-fonte: https://github.com/salemnopturn/DraughtsMind-Pro
+
+📜 Licença: GPL-3.0-or-later
+
+🧠 DraughtsMind — Think Deeper. Play Better.
+-->
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+    <title>DraughtsMind Pro — Damas Brasileiras | Knowledge Base Integration</title>
+    <meta name="description" content="DraughtsMind Pro — Elite Brazilian Draughts engine. Play against a powerful AI with opening book, iterative deepening, alpha-beta, TT, and more.">
+    <meta name="robots" content="index, follow">
+    <meta property="og:title" content="DraughtsMind Pro — Damas Brasileiras">
+    <meta property="og:description" content="Elite Brazilian Draughts AI engine. Full offline, no install required.">
+    <meta property="og:type" content="website">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="DraughtsMind Pro">
+    <meta name="twitter:description" content="Elite Brazilian Draughts AI — play directly in your browser.">
+    <link rel="icon" href="../icons/hicolor/64x64/apps/io.github.salemnopturn.DraughtsMindPro.png" type="image/png">
+    <link rel="stylesheet" href="styles/styles.css">
+</head>
+<body>
+
+<div class="container">
+    <div class="board-wrapper">
+        <div style="display:flex;align-items:center;justify-content:center;gap:0.55rem;margin-bottom:0.15rem;">
+            <h1 style="margin-bottom:0;">DRAUGHTSMIND</h1>
+        </div>
+        <div class="version-badge" id="version-badge">Pro</div>
+        <div class="board-ratio">
+            <div id="board" class="board"></div>
+            <!-- Static coordinate overlays: never inside .board so they never rotate -->
+            <div id="coord-numbers" class="coord-numbers-overlay"></div>
+            <div id="coord-letters" class="coord-letters-overlay"></div>
+        </div>
+        <div class="status-bar" id="status-container">
+            <div id="clock-white" class="timer">--:--</div>
+            <div id="status-text">Pronto para Iniciar</div>
+            <div id="clock-black" class="timer">--:--</div>
+        </div>
+        <div class="status-bar" style="margin-top:0.5rem; justify-content:center;" id="analysis-text">
+            Modo Análise: Desativado
+        </div>
+    </div>
+
+    <div class="controls">
+        <div class="panel col">
+            <div class="row">
+                <div class="col" style="flex:1;">
+                    <label>Modo</label>
+                    <select id="cfg-mode">
+                        <option value="0">Humano vs Humano</option>
+                        <option value="1" selected>Humano (B) vs CPU (P)</option>
+                        <option value="2">CPU (B) vs Humano (P)</option>
+                        <option value="3">CPU vs CPU</option>
+                        <option value="4">Sandbox (Livre)</option>
+                        <option value="5">Tablita</option>
+                    </select>
+                </div>
+                <div class="col" style="flex:1;">
+                    <label>Visão</label>
+                    <select id="cfg-view">
+                        <option value="W" selected>Brancas Embaixo</option>
+                        <option value="B">Vermelhas Embaixo</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col" style="flex:1;">
+                    <label>Profundidade</label>
+                    <select id="cfg-depth">
+                        <option value="4">Ply 4 (Rápido)</option>
+                        <option value="6">Ply 6 (Normal)</option>
+                        <option value="8">Ply 8 (Difícil)</option>
+                        <option value="10" selected>Ply 10 (Pro)</option>
+                        <option value="12">Ply 12 (Mestre)</option>
+                        <option value="14">Ply 14 (Elite)</option>
+                        <option value="16">Ply 16 (Grandmaster)</option>
+                    </select>
+                </div>
+                <div class="col" style="flex:1;">
+                    <label>Tempo</label>
+                    <select id="cfg-time">
+                        <option value="0">Sem Limite</option>
+                        <option value="60">1 Min (Bullet)</option>
+                        <option value="180">3 Min (Blitz)</option>
+                        <option value="300">5 Min (Blitz)</option>
+                        <option value="600">10 Min (Rápido)</option>
+                        <option value="900">15 Min (Rápido)</option>
+                        <option value="1800">30 Min (Clássico)</option>
+                        <option value="3600">60 Min (Pro)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row" style="margin-top:0.5rem;">
+                <label style="cursor:pointer;display:flex;gap:0.4rem;align-items:center;color:#29b6f6;width:100%;">
+                    <input type="checkbox" id="cfg-analysis"> Habilitar Análise
+                </label>
+            </div>
+            <div class="row" style="margin-top:0.5rem;">
+                <button class="btn btn-primary" style="flex:1;" id="btn-resume">▶ Iniciar / Continuar</button>
+                <button class="btn" style="flex:1;" id="btn-reset">⟳ Reiniciar</button>
+            </div>
+            <div class="row">
+                <button class="btn" style="flex:1;" id="btn-force" title="Forçar jogada da CPU">Forçar Engine</button>
+                <button class="btn" style="flex:1;" id="btn-suggest">Sugestão</button>
+            </div>
+            <div class="row">
+                <button class="btn" style="flex:1;" id="btn-edit">✏ Editar</button>
+                <button class="btn btn-danger" style="flex:1;" id="btn-resign" title="Desistir da partida atual">Desistir</button>
+            </div>
+            <div id="edit-controls" class="row" style="display:none;margin-top:0.3rem;gap:0.4rem;justify-content:center;align-items:center;font-size:0.75rem;">
+                <span style="color:#ffa726;">✏ Editando</span>
+                <span style="color:#555;">|</span>
+                <label style="color:#ccc;">Primeiro lance:
+                    <select id="edit-turn" style="font-size:0.7rem;padding:0.1rem 0.3rem;">
+                        <option value="1">Brancas</option>
+                        <option value="-1">Vermelhas</option>
+                    </select>
+                </label>
+            </div>
+            <!-- Tablita mode controls -->
+            <div id="tablita-controls" class="row" style="display:none;margin-top:0.3rem;gap:0.4rem;justify-content:center;align-items:center;font-size:0.75rem;">
+                <span style="color:#ffa726;">🏓 Tablita</span>
+                <span style="color:#555;">|</span>
+                <span style="color:#ccc;">Jogo: <strong id="tablita-game-num" style="color:#e8ecf5;">1/2</strong></span>
+                <span style="color:#555;">|</span>
+                <span style="color:#ccc;">Placar: <strong id="tablita-match-score" style="color:#22c55e;">0-0</strong></span>
+            </div>
+            <div id="tablita-submode-row" class="row" style="display:none;margin-top:0.3rem;gap:0.3rem;justify-content:center;align-items:center;font-size:0.72rem;">
+                <label style="color:#ccc;">Sub-modo:
+                    <select id="tablita-submode" style="font-size:0.7rem;padding:0.15rem 0.3rem;background:#1a1d24;color:#e8ecf5;border:1px solid #333;border-radius:4px;">
+                        <option value="0">Humano vs Humano</option>
+                        <option value="1" selected>Humano (B) vs CPU (P)</option>
+                        <option value="2">CPU (B) vs Humano (P)</option>
+                        <option value="3">CPU vs CPU</option>
+                        <option value="4">Sandbox (Livre)</option>
+                    </select>
+                </label>
+            </div>
+            <div id="tablita-sequence" class="row" style="display:none;margin-top:0.2rem;justify-content:center;font-size:0.68rem;color:#8591a8;font-family:ui-monospace,monospace;">
+            </div>
+            <div id="piece-count-row" class="row" style="margin-top:0.3rem;justify-content:center;font-size:0.72rem;color:#aaa;gap:0.6rem;font-family:ui-monospace,monospace;">
+                <span style="color:#ccc;">Brancas: <strong id="piece-count-w" style="color:#e8ecf5;">12P 0D</strong></span>
+                <span style="color:#555;">|</span>
+                <span style="color:#ccc;">Vermelhas: <strong id="piece-count-b" style="color:#e76060;">12P 0D</strong></span>
+            </div>
+            <div id="cpu-stats-row" class="row" style="margin-top:0.3rem;display:none;justify-content:center;font-size:0.72rem;color:#aaa;gap:0.5rem;font-family:ui-monospace,monospace;">
+                <span style="color:#888;">CPU×CPU:</span>
+                <span id="cpu-stats" style="color:#aaa;">⚪0 ½0 ⚫0 (0 jg)</span>
+            </div>
+        </div>
+
+        <div class="panel col">
+            <label>Histórico &amp; Variações</label>
+            <div id="history"></div>
+            <div class="row" style="gap:0.2rem;margin-top:0.2rem;">
+                <button class="btn btn-nav" id="btn-nav-start" title="Início (↑)">|&lt;</button>
+                <button class="btn btn-nav" id="btn-nav-prev"  title="Anterior (←)">&lt;</button>
+                <button class="btn btn-nav" id="btn-nav-next"  title="Próximo (→)">&gt;</button>
+                <button class="btn btn-nav" id="btn-nav-end"   title="Fim (↓)">&gt;|</button>
+            </div>
+            <div class="row" style="margin-top:0.5rem;">
+                <button class="btn" style="flex:1;" id="btn-export">EXPORTAR  .PDN</button>
+                <label class="btn" style="flex:1;margin:0;text-align:center;">
+                    Importar .pdn <input type="file" id="btn-import" style="display:none;" accept=".pdn,.abd,.pnd">
+                </label>
+            </div>
+        </div>
+
+        <div class="panel col">
+            <label>Colar Sequência PDN</label>
+            <textarea id="paste-area" placeholder="11-15 22x13 ou a1-b2..."></textarea>
+            <button class="btn btn-success" id="btn-apply-paste">Validar &amp; Reconstruir</button>
+        </div>
+    </div>
+</div>
+
+<div id="modal" class="modal-bg">
+    <div class="modal-content">
+        <div id="modal-title" class="modal-title">Notificação</div>
+        <div id="modal-desc"  class="modal-desc">Detalhes</div>
+        <button class="btn btn-primary" style="width:100%;"
+            onclick="document.getElementById('modal').style.display='none'">Fechar</button>
+    </div>
+</div>
+
+<div id="branch-modal" class="modal-bg">
+    <div class="modal-content">
+        <div class="modal-title" style="color:#ffa726;">Divergência Detectada</div>
+        <div class="modal-desc">Esta jogada diverge do histórico existente. Como deseja prosseguir?</div>
+        <div class="col" style="gap:0.5rem;">
+            <button class="btn btn-primary" onclick="branchReplace()">Substituir Linha Existente</button>
+            <button class="btn btn-success" onclick="branchAdd()">Adicionar como Nova Variação</button>
+            <button class="btn"             onclick="branchCancel()">Cancelar Jogada</button>
+        </div>
+    </div>
+</div>
+
+<script src="scripts/app.js"></script>
+</body>
+</html>

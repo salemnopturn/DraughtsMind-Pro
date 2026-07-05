@@ -1,0 +1,32 @@
+{
+  "appId": "io.github.salemnopturn.DraughtsMindPro",
+  "productName": "DraughtsMind Pro",
+  "publish": null,
+  "directories": {
+    "output": "build/dist"
+  },
+  "files": [
+    "main/**/*",
+    "renderer/**/*",
+    "preload/**/*",
+    "engine/**/*",
+    "rules/**/*",
+    "assets/**/*",
+    "package.json"
+  ],
+  "icon": "assets/logo-source-1024.png",
+  "linux": {
+    "target": ["AppImage", "deb", "rpm"],
+    "icon": "assets/logo-source-1024.png",
+    "category": "Game"
+  },
+  "win": {
+    "target": ["nsis"],
+    "icon": "assets/logo-source-1024.png"
+  },
+  "mac": {
+    "target": ["dmg"],
+    "icon": "assets/logo-source-1024.png",
+    "category": "public.app-category.games"
+  }
+}
