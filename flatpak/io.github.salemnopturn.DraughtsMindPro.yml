@@ -25,6 +25,7 @@ modules:
       env:
         npm_config_offline: 'true'
         npm_config_cache: /run/build/draughtsmind-pro/flatpak-node/npm-cache
+        ELECTRON_CACHE: /run/build/draughtsmind-pro/flatpak-node/cache/electron
     sources:
       # NOTA: troque "tag: v1.0.2" pela tag real depois de publicar no GitHub
       - type: git
