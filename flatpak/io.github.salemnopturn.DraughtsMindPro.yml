@@ -26,10 +26,10 @@ modules:
         npm_config_offline: 'true'
         npm_config_cache: /run/build/draughtsmind-pro/npm-cache
     sources:
-      # NOTA: troque "tag: v1.0.1" pela tag real depois de publicar no GitHub
+      # NOTA: troque "tag: v1.0.2" pela tag real depois de publicar no GitHub
       - type: git
         url: https://github.com/salemnopturn/DraughtsMind-Pro.git
-        tag: v1.0.1
+        tag: v1.0.2
       # generated-sources.json é gerado a partir de flatpak/electron-package-lock.json
       # (um package-lock.json MÍNIMO, só com "electron" como dependência normal — não é
       # o package-lock.json da raiz do projeto, que tem electron em devDependencies e por
@@ -49,7 +49,7 @@ modules:
       - cp package.json /tmp/app-package.json
       - cp flatpak/electron-package.json package.json
       - cp flatpak/electron-package-lock.json package-lock.json
-      - npm install --offline --production
+      - npm ci --omit=dev --offline
       - mkdir -p /app/lib/draughtsmind-pro
       - cp -r main preload renderer engine rules assets node_modules /app/lib/draughtsmind-pro/
       - cp /tmp/app-package.json /app/lib/draughtsmind-pro/package.json
