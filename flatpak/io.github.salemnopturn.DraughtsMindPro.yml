@@ -24,7 +24,7 @@ modules:
       append-path: /usr/lib/sdk/node20/bin
       env:
         npm_config_offline: 'true'
-        npm_config_cache: /run/build/draughtsmind-pro/npm-cache
+        npm_config_cache: /run/build/draughtsmind-pro/flatpak-node/npm-cache
     sources:
       # NOTA: troque "tag: v1.0.2" pela tag real depois de publicar no GitHub
       - type: git
