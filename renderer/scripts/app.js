@@ -5283,19 +5283,27 @@
     document.getElementById('btn-nav-end').onclick  =()=>{ let c=currentNode; while(c.children.length>0) c=c.children[0]; navToId(c.id); };
 
     // ── PDN: Conversão de Coordenadas ─────────────────────────────────────────
-    // Numeração PDN padrão: quadrado 1 = inferior-esquerdo (Branca),
-    //                       quadrado 32 = superior-direito (Vermelha).
+    // Numeração PDN: quadrado 1 = canto inferior-esquerdo (Brancas),
+    //                quadrado 32 = canto superior-direito (Vermelhas).
+    // No mapeamento interno (rows 0-2 = Brancas, rows 5-7 = Vermelhas):
+    //   idxToNum usa mapeamento direto (row*4+offset+1).
+    //   numToIdxAlt usa mapeamento espelhado para compatibilidade com
+    //   arquivos PDN de outras fontes (ex: Classic, lidraughts).
     function idxToNum(idx) {
         const r = idx >> 3, c = idx & 7;
         if ((r + c) % 2 !== 0) return -1;
         const offset = r % 2 === 0 ? c / 2 : (c - 1) / 2;
-        return (7 - r) * 4 + offset + 1;
+        return r * 4 + offset + 1;
     }
     function numToIdx(num) {
         if (num < 1 || num > 32) return -1;
-        const r = 7 - Math.floor((num - 1) / 4), offset = (num - 1) % 4;
+        const r = Math.floor((num - 1) / 4), offset = (num - 1) % 4;
         const c = r % 2 === 0 ? offset * 2 : offset * 2 + 1;
         return r * 8 + c;
+    }
+    function numToIdxAlt(num) {
+        if (num < 1 || num > 32) return -1;
+        return numToIdx(33 - num);
     }
 
     // ── PDN: Formatação de Lance ──────────────────────────────────────────────
@@ -5371,17 +5379,18 @@
     };
 
     // ── PDN: Importação ───────────────────────────────────────────────────────
-    function tryMatchMove(state, tk) {
+    function tryMatchMove(state, tk, useAlt) {
         const moves = state.getMoves();
         let found = moves.find(m => move2Str(m).toLowerCase() === tk.toLowerCase());
         if (found) return found;
         if (/^\d+([-x:]\d+)+$/i.test(tk)) {
             const pts = tk.split(/[-x:]/i).map(Number), isCapture = /[x:]/i.test(tk);
-            const sIdx = numToIdx(pts[0]), eIdx = numToIdx(pts[pts.length - 1]);
+            const conv = useAlt ? numToIdxAlt : numToIdx;
+            const sIdx = conv(pts[0]), eIdx = conv(pts[pts.length - 1]);
             if (sIdx >= 0 && eIdx >= 0) {
                 let poss = moves.filter(m => m.from === sIdx && m.to === eIdx);
                 if (poss.length > 1 && pts.length > 2) {
-                    const ep = pts.slice(1).map(numToIdx);
+                    const ep = pts.slice(1).map(conv);
                     const nw = poss.filter(m => m.path.length === ep.length && m.path.every((sq, i) => sq === ep[i]));
                     if (nw.length > 0) poss = nw;
                 }
@@ -5392,15 +5401,15 @@
         return null;
     }
 
-    function parsePDNTokens(tokens) {
+    function parsePDNTokens(tokens, useAlt) {
         const ns = new State(); ns.timeW = timeLimit; ns.timeB = timeLimit;
         const rn = { id: 0, parent: null, moveStr: null, state: ns, children: [] };
         let nid = 1, curr = rn, stack = [], skipped = [];
         for (const tk of tokens) {
-            if (tk === '(') { stack.push(curr); }
+            if (tk === '(') { stack.push(curr); curr = curr.parent || rn; }
             else if (tk === ')') { if (stack.length > 0) curr = stack.pop(); }
             else {
-                const found = tryMatchMove(curr.state, tk);
+                const found = tryMatchMove(curr.state, tk, useAlt);
                 if (!found) { skipped.push(tk); continue; }
                 const mStr = move2Str(found);
                 const ex = curr.children.find(c => c.moveStr === mStr);
@@ -5409,7 +5418,7 @@
                     const ns2 = curr.state.clone();
                     ns2.applyMove(found); ns2.timeW = timeLimit; ns2.timeB = timeLimit;
                     const nd = { id: nid++, parent: curr, moveStr: mStr, state: ns2, children: [], move: found };
-                    curr.children.push(nd); curr = nd;
+                    curr.children.push(nd); allNodes[nd.id] = nd; curr = nd;
                 }
             }
         }
@@ -5431,7 +5440,16 @@
         str = str.replace(/\(/g, ' ( ').replace(/\)/g, ' ) ');
 
         const tokens = str.split(/\s+/).filter(t => t.length > 0);
-        const r = parsePDNTokens(tokens);
+
+        allNodes = {};
+        let r1 = parsePDNTokens(tokens, false);
+        let r2 = parsePDNTokens(tokens, true);
+        let r;
+        if (r2.nodeCount > r1.nodeCount && r2.skipped.length < r1.skipped.length) {
+            r = r2;
+        } else {
+            r = r1;
+        }
 
         rootNode = r.rootNode;
         nextNodeId = r.nodeCount + 1;
