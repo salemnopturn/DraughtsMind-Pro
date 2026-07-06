@@ -584,6 +584,41 @@ window.onerror = function(message, source, lineno, colno, error) { console.error
             return false;
         }
 
+        loadFEN(fen) {
+            this.board.fill(EMPTY);
+            this.wP = this.bP = this.wK = this.bK = 0;
+            const parts = fen.trim().split(/\s+/);
+            const rows = parts[0].split('/');
+            for (let r = 0; r < 8; r++) {
+                let c = 0;
+                for (const ch of rows[r]) {
+                    if (ch >= '1' && ch <= '8') { c += parseInt(ch); }
+                    else {
+                        const idx = r * 8 + c;
+                        if (ch === 'W') this.board[idx] = W_MAN;
+                        else if (ch === 'B') this.board[idx] = V_MAN;
+                        else if (ch === 'K') this.board[idx] = W_KING;
+                        else if (ch === 'Q') this.board[idx] = V_KING;
+                        c++;
+                    }
+                }
+            }
+            this.turn = (parts[1] === 'W') ? 1 : -1;
+            this._rehash();
+            this.hashHist = [this.hash];
+            this.halfMoveClock = 0;
+            this.endgameClock = 0;
+            this.isEndgame = false;
+            this.endgameLimit = 10;
+            for (let i = 0; i < 64; i++) {
+                const p = this.board[i];
+                if (p === W_MAN) this.wP++;
+                else if (p === V_MAN) this.bP++;
+                else if (p === W_KING) this.wK++;
+                else if (p === V_KING) this.bK++;
+            }
+        }
+
         toFEN() {
             let fen = '';
             for (let r = 0; r < 8; r++) {
@@ -2950,6 +2985,13 @@ let bookMap = null;
     };
 
     // ── PDN: Importação ───────────────────────────────────────────────────────
+    function algToIdx(sq) {
+        if (!sq || sq.length < 2) return -1;
+        const c = sq.charCodeAt(0) - 97, r = parseInt(sq[1]) - 1;
+        if (c < 0 || c > 7 || r < 0 || r > 7) return -1;
+        return r * 8 + c;
+    }
+
     function numToIdx(num) {
         if (num < 1 || num > 32) return -1;
         const cell = num - 1;
