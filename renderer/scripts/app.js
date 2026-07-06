@@ -35,7 +35,7 @@
     }
 
     let cfgDepth = 10, cfgMode = MODE_HVM, cfgView = 'W', isAnalysisOn = false; // [FIX-V31-DEPTH] padrão 10
-    let isComputing = false, gameEnded = false, gameStarted = false;
+    let isComputing = false, gameEnded = false, gameStarted = false, gameResultType = null;
     let editMode = false, editStartTurn = 1, ttGen = 0;
     let timeLimit = 0, timeW = 0, timeB = 0;
 
@@ -244,7 +244,7 @@
         document.getElementById('cfg-view').value = cfgView;
         updateCoords();
 
-        gameStarted = false; gameEnded = false; isComputing = false;
+        gameStarted = false; gameEnded = false; isComputing = false; gameResultType = null;
         document.getElementById('modal').style.display = 'none';
         render();
     }
@@ -4764,6 +4764,10 @@
         document.getElementById('modal').style.display='flex';
         if (title==="Fim de Jogo") {
             gameEnded=true; stopClock();
+            const dl=desc.toLowerCase();
+            if (dl.includes('empate')||dl.includes('draw')) gameResultType='draw';
+            else if (dl.includes('brancas vencem')) gameResultType='white';
+            else gameResultType='red';
             txtStatus.innerText="Fim de Jogo";
             barStatus.classList.remove('computing');
             selIdx=-1; valTgt=[];
@@ -4926,7 +4930,7 @@
         if (isComputing) return;
         if (editMode) { editMode=false; document.getElementById('edit-controls').style.display='none'; resetBoard(); return; }
         editMode=true; editStartTurn=1;
-        gameStarted=false; gameEnded=false; isComputing=false;
+        gameStarted=false; gameEnded=false; isComputing=false; gameResultType=null;
         stopClock();
         const ns=new State();
         for (let i=0;i<64;i++) ns.board[i]=EMPTY;
@@ -4943,8 +4947,7 @@
 
     function resetBoard() {
         editMode=false; document.getElementById('edit-controls').style.display='none';
-        gameStarted=false; gameEnded=false; isComputing=false;
-        // [ENG-V18-3] Reinicia memória estratégica da partida com o tabuleiro
+        gameStarted=false; gameEnded=false; isComputing=false; gameResultType=null;
         gameTrajectory = [];
         trajectoryPhase = 'opening';
         nonBookPlyCount = 0; // [ENG-V24-SYNC] Reset do contador de transição Livro→Motor
@@ -5300,11 +5303,11 @@
         const r=idx>>3, c=idx&7;
         if ((r+c)%2!==0) return -1;
         const offset=r%2===0?c/2:(c-1)/2;
-        return (7-r)*4+offset+1;
+        return r*4+offset+1;
     }
     function numToIdx(num) {
         if (num<1||num>32) return -1;
-        const r=7-Math.floor((num-1)/4), offset=(num-1)%4;
+        const r=Math.floor((num-1)/4), offset=(num-1)%4;
         const c=r%2===0?offset*2:offset*2+1;
         return r*8+c;
     }
@@ -5331,7 +5334,12 @@
         return out;
     }
     document.getElementById('btn-export').onclick=async()=>{
-        const result=gameEnded?(gameState.turn===1?'0-2':'2-0'):'*';
+        let result='*';
+        if (gameEnded) {
+            if (gameResultType==='draw') result='1/2-1/2';
+            else if (gameResultType==='white') result='2-0';
+            else result='0-2';
+        }
         let txt=`[Event "DraughtsMind Elite Match"]\n[GameType "26"]\n[Result "${result}"]\n`;
         txt+=`{DraughtsMind v${ENGINE_VERSION} | depth:${cfgDepth} | time:${timeLimit} | hash:${gameState.hash.toString(16).toUpperCase().slice(-8)}}\n\n`;
         txt+=generatePDN(rootNode,0)+`\n${result}\n`;

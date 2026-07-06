@@ -179,12 +179,14 @@ class TablitaManager {
         else if (playerWins < opponentWins) matchResult = 'loss';
         else matchResult = 'draw';
 
-        // Store in history
-        this.matchHistory.push({
-            tablita: this.currentTablita ? this.currentTablita.name : 'Unknown',
-            games: [...this.matchResults],
-            result: matchResult
-        });
+        // Store in history only when match is complete
+        if (this.matchResults.length >= 2) {
+            this.matchHistory.push({
+                tablita: this.currentTablita ? this.currentTablita.name : 'Unknown',
+                games: [...this.matchResults],
+                result: matchResult
+            });
+        }
 
         return { playerWins, opponentWins, draws, matchResult };
     }
