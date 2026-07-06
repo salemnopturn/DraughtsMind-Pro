@@ -35,6 +35,18 @@ window.onerror = function(message, source, lineno, colno, error) { console.error
         return m;
     }
 
+    function cloneMv(m) {
+        if (!m) return null;
+        return {
+            from: m.from, to: m.to,
+            path: m.path ? m.path.slice() : [],
+            captured: m.captured ? m.captured.slice() : [],
+            capKings: m.capKings || 0,
+            promo: m.promo || false,
+            score: m.score || 0
+        };
+    }
+
     let cfgDepth = 10, cfgMode = MODE_HVM, cfgView = 'W', isAnalysisOn = false; // [FIX-V31-DEPTH] padrão 10
     let isComputing = false, gameEnded = false, gameStarted = false, gameResultType = null;
     let editMode = false, editStartTurn = 1, ttGen = 0;
@@ -213,7 +225,7 @@ window.onerror = function(message, source, lineno, colno, error) { console.error
             const ns2 = curr.state.clone();
             ns2.applyMove(found); ns2.timeW = timeLimit; ns2.timeB = timeLimit;
             const nd = { id: nextNodeId++, parent: curr, moveStr: move2Str(found),
-                         state: ns2, children: [], move: found };
+                         state: ns2, children: [], move: cloneMv(found) };
             curr.children.push(nd); allNodes[nd.id] = nd; curr = nd;
         }
         currentNode = curr;
@@ -2060,11 +2072,11 @@ let bookMap = null;
         const bookMove = bookProbe(state);
         if (bookMove) {
             restoreMP(poolPos);
-            return { move: bookMove, score: 0, depth: 0, nodes: 0, pv: [bookMove], isBook: true };
+            return { move: cloneMv(bookMove), score: 0, depth: 0, nodes: 0, pv: [cloneMv(bookMove)], isBook: true };
         }
 
         if (moves.length === 1) {
-            const res = { move: moves[0], score: state.eval(), depth: 1, nodes: 1, pv: [moves[0]], isBook: false };
+            const res = { move: cloneMv(moves[0]), score: state.eval(), depth: 1, nodes: 1, pv: [cloneMv(moves[0])], isBook: false };
             restoreMP(poolPos);
             return res;
         }
@@ -2151,11 +2163,11 @@ let bookMap = null;
 
         restoreMP(poolPos);
         return {
-            move: bestMove,
+            move: cloneMv(bestMove),
             score: bestScore,
             depth: reachedDepth,
             nodes,
-            pv,
+            pv: pv.map(cloneMv),
             isBook: false,
         };
     }    // ════════════════════════════════════════════════════════════════════════
@@ -2637,7 +2649,7 @@ let bookMap = null;
                 const ns2 = curr.state.clone();
                 ns2.applyMove(found); ns2.timeW = timeLimit; ns2.timeB = timeLimit;
                 const nd = { id: nextNodeId++, parent: curr, moveStr: move2Str(found),
-                             state: ns2, children: [], move: found };
+                             state: ns2, children: [], move: cloneMv(found) };
                 curr.children.push(nd); allNodes[nd.id] = nd; curr = nd;
             }
 
@@ -2732,7 +2744,7 @@ let bookMap = null;
     function addNodeAndApply(m) {
         const newState=currentNode.state.clone();
         newState.applyMove(m); newState.timeW=timeW; newState.timeB=timeB;
-        const n={ id:nextNodeId++, parent:currentNode, moveStr:move2Str(m), state:newState, children:[], move:m };
+        const n={ id:nextNodeId++, parent:currentNode, moveStr:move2Str(m), state:newState, children:[], move: cloneMv(m) };
         currentNode.children.push(n); allNodes[n.id]=n; currentNode=n;
         gameState=currentNode.state.clone();
 
@@ -2921,10 +2933,10 @@ let bookMap = null;
             const moveNum = Math.floor(ply / 2) + 1;
             if (isWhite) out += `${moveNum}. `;
             else if (curr === node || prevHadVars) out += `${moveNum}... `;
-            out += move2PDN(main.move) + ' ';
+            out += main.moveStr + ' ';
             for (let i = 1; i < curr.children.length; i++) {
                 const v = curr.children[i];
-                out += `( ${moveNum}${isWhite ? '.' : '...'} ${move2PDN(v.move)} ${generatePDN(v, ply + 1)}) `;
+                out += `( ${moveNum}${isWhite ? '.' : '...'} ${v.moveStr} ${generatePDN(v, ply + 1)}) `;
             }
             prevHadVars = hasVars; curr = main; ply++;
         }
@@ -3115,7 +3127,7 @@ let bookMap = null;
                     const ns2 = curr.state.clone();
                     ns2.applyMove(found); ns2.timeW = timeLimit; ns2.timeB = timeLimit;
                     const nd = { id: nid++, parent: curr, moveStr: mStr,
-                                 state: ns2, children: [], move: found,
+                                 state: ns2, children: [], move: cloneMv(found),
                                  _var: varDepth > 0 };
                     curr.children.push(nd); allNodes[nd.id] = nd; curr = nd;
                 }
