@@ -5328,7 +5328,12 @@
         txt+=`{DraughtsMind v${ENGINE_VERSION} | depth:${cfgDepth} | time:${timeLimit} | hash:${gameState.hash.toString(16).toUpperCase().slice(-8)}}\n\n`;
         txt+=generatePDN(rootNode,0)+`\n${result}\n`;
         const name=`mind_game_${Date.now()}.pdn`;
-        if (window.showSaveFilePicker) {
+        if (window.electronAPI?.saveFile) {
+            try {
+                const r=await window.electronAPI.saveFile({ content:txt, filename:name, filters:[{name:'PDN',extensions:['pdn']}] });
+                if (r&&r.success) { txtAnalysis.innerHTML=`<span style="color:#66bb6a;">✓ Exportado: ${r.path}</span>`; return; }
+            } catch(e) { /* fallback below */ }
+        } else if (window.showSaveFilePicker) {
             try {
                 const h=await window.showSaveFilePicker({ suggestedName:name, types:[{description:'PDN',accept:{'text/plain':['.pdn']}}] });
                 const w=await h.createWritable(); await w.write(txt); await w.close();
