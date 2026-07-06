@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=DraughtsMind Pro
+Comment=Elite Brazilian Draughts AI Engine
+Exec=draughtsmind-pro %U
+Icon=io.github.salemnopturn.DraughtsMindPro
+Type=Application
+Categories=Game;BoardGame;
+Keywords=draughts;checkers;brazilian;ai;engine;
+StartupNotify=true
