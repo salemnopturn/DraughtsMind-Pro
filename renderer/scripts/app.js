@@ -2987,7 +2987,8 @@ let bookMap = null;
     // ── PDN: Importação ───────────────────────────────────────────────────────
     function algToIdx(sq) {
         if (!sq || sq.length < 2) return -1;
-        const c = sq.charCodeAt(0) - 97, r = parseInt(sq[1]) - 1;
+        const charCode = sq.toLowerCase().charCodeAt(0);
+        const c = charCode - 97, r = parseInt(sq[1]) - 1;
         if (c < 0 || c > 7 || r < 0 || r > 7) return -1;
         return r * 8 + c;
     }
@@ -3019,16 +3020,28 @@ let bookMap = null;
         // Helper to check if a sequence of squares matches a move
         function matchesMove(m, tkSqs) {
             if (tkSqs.length < 2) return false;
-            const M = m.captured.length > 0 ? [m.from, ...m.path] : [m.from, m.to];
-            if (tkSqs[0] !== M[0]) return false;
+            if (tkSqs[0] !== m.from) return false;
             
-            // Check if tkSqs is a subsequence of M
-            let i = 0, j = 0;
-            while (i < tkSqs.length && j < M.length) {
-                if (tkSqs[i] === M[j]) i++;
-                j++;
+            if (m.captured.length > 0) {
+                // The notation might specify landing squares OR captured pieces.
+                // As long as the last square is either m.to OR the last captured piece,
+                // and all intermediate squares are part of the capture path or captured pieces, we consider it a match.
+                
+                // Also, sometimes notations just use from-to even for captures (e.g. c3-e5 instead of c3xe5)
+                if (tkSqs.length === 2 && tkSqs[1] === m.to) return true;
+                
+                // If it specifies the captured piece instead of landing square (e.g. c5-d4 instead of c5-e3)
+                if (tkSqs.length === 2 && m.captured.length === 1 && tkSqs[1] === m.captured[0]) return true;
+
+                // Validate sequence
+                const validSqs = [...m.path, ...m.captured, m.to];
+                for (let i = 1; i < tkSqs.length; i++) {
+                    if (!validSqs.includes(tkSqs[i])) return false;
+                }
+                return true;
+            } else {
+                return tkSqs[tkSqs.length - 1] === m.to;
             }
-            return i === tkSqs.length;
         }
 
         // 2. Try parsing as algebraic coordinate notation (e.g. c3-d4, c3xe5, f6-d4-b2, c3:e5)
