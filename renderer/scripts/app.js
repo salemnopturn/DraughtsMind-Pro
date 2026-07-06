@@ -5348,24 +5348,55 @@
     };
 
     // ── Importação PDN ────────────────────────────────────────────────────────
-    function tryMatchMove(state, tk) {
+    function tryMatchMove(state, tk, useAlt) {
         const moves=state.getMoves();
         let found=moves.find(m=>move2Str(m).toLowerCase()===tk.toLowerCase());
         if (found) return found;
         if (/^\d+([-x:]\d+)+$/i.test(tk)) {
             const pts=tk.split(/[-x:]/i).map(Number), isCapture=/[x:]/i.test(tk);
-            const sIdx=numToIdx(pts[0]), eIdx=numToIdx(pts[pts.length-1]);
-            if (sIdx<0||eIdx<0) return null;
-            let poss=moves.filter(m=>m.from===sIdx&&m.to===eIdx);
-            if (poss.length>1&&pts.length>2) {
-                const ep=pts.slice(1).map(numToIdx);
-                const nw=poss.filter(m=>m.path.length===ep.length&&m.path.every((sq,i)=>sq===ep[i]));
-                if (nw.length>0) poss=nw;
+            const conv = useAlt ? numToIdxAlt : numToIdx;
+            const sIdx=conv(pts[0]), eIdx=conv(pts[pts.length-1]);
+            if (sIdx>=0&&eIdx>=0) {
+                let poss=moves.filter(m=>m.from===sIdx&&m.to===eIdx);
+                if (poss.length>1&&pts.length>2) {
+                    const ep=pts.slice(1).map(conv);
+                    const nw=poss.filter(m=>m.path.length===ep.length&&m.path.every((sq,i)=>sq===ep[i]));
+                    if (nw.length>0) poss=nw;
+                }
+                if (poss.length>1&&isCapture) { const c=poss.filter(m=>m.captured.length>0); if(c.length>0) poss=c; }
+                if (poss.length>0) return poss[0];
             }
-            if (poss.length>1&&isCapture) { const c=poss.filter(m=>m.captured.length>0); if(c.length>0) poss=c; }
-            if (poss.length>0) return poss[0];
         }
         return null;
+    }
+
+    function numToIdxAlt(num) {
+        if (num<1||num>32) return -1;
+        return numToIdx(33 - num);
+    }
+
+    function parsePDNTokens(tokens, useAlt) {
+        const ns = new State(); ns.timeW = timeLimit; ns.timeB = timeLimit;
+        const rn = { id:0, parent:null, moveStr:null, state:ns, children:[] };
+        let nid = 1, curr = rn, stack = [], skipped = [];
+        for (const tk of tokens) {
+            if (tk === '(') { stack.push(curr); }
+            else if (tk === ')') { if (stack.length > 0) curr = stack.pop(); }
+            else {
+                const found = tryMatchMove(curr.state, tk, useAlt);
+                if (!found) { skipped.push(tk); continue; }
+                const mStr = move2Str(found);
+                const ex = curr.children.find(c => c.moveStr === mStr);
+                if (ex) { curr = ex; }
+                else {
+                    const ns2 = curr.state.clone();
+                    ns2.applyMove(found); ns2.timeW = timeLimit; ns2.timeB = timeLimit;
+                    const nd = { id:nid++, parent:curr, moveStr:mStr, state:ns2, children:[], move:found };
+                    curr.children.push(nd); curr = nd;
+                }
+            }
+        }
+        return { rootNode: rn, skipped, nodeCount: nid - 1 };
     }
 
     function loadEBNF(str) {
@@ -5380,32 +5411,21 @@
         str = str.replace(/\(/g, ' ( ').replace(/\)/g, ' ) ');
 
         const tokens = str.split(/\s+/).filter(t => t.length > 0);
-        const ns = new State(); ns.timeW = timeLimit; ns.timeB = timeLimit;
-        rootNode    = { id:0, parent:null, moveStr:null, state:ns, children:[] };
-        nextNodeId  = 1; allNodes = { 0: rootNode };
-        let curr    = rootNode, stack = [], skipped = [];
 
-        for (const tk of tokens) {
-            if (tk === '(') {
-                stack.push(curr);
-            } else if (tk === ')') {
-                if (stack.length > 0) curr = stack.pop();
-            } else {
-                const found = tryMatchMove(curr.state, tk);
-                if (!found) { skipped.push(tk); continue; }
-                const mStr = move2Str(found);
-                const ex   = curr.children.find(c => c.moveStr === mStr);
-                if (ex) {
-                    curr = ex;
-                } else {
-                    const ns2 = curr.state.clone();
-                    ns2.applyMove(found); ns2.timeW = timeLimit; ns2.timeB = timeLimit;
-                    const nd = { id:nextNodeId++, parent:curr, moveStr:mStr,
-                                 state:ns2, children:[], move:found };
-                    curr.children.push(nd); allNodes[nd.id] = nd; curr = nd;
-                }
-            }
+        let r1 = parsePDNTokens(tokens, false);
+        let r2 = parsePDNTokens(tokens, true);
+        let r;
+        if (r2.nodeCount > r1.nodeCount && r2.skipped.length < r1.skipped.length) {
+            r = r2;
+        } else {
+            r = r1;
         }
+
+        rootNode = r.rootNode;
+        nextNodeId = r.nodeCount + 1;
+        allNodes = {};
+        const collectNodes = (nd) => { allNodes[nd.id] = nd; nd.children.forEach(collectNodes); };
+        collectNodes(rootNode);
 
         currentNode = rootNode; gameState = currentNode.state.clone();
         timeW = timeLimit; timeB = timeLimit;
@@ -5419,13 +5439,13 @@
         document.getElementById('branch-modal').style.display = 'none';
         render();
 
-        if (skipped.length > 0) {
-            const uniq = [...new Set(skipped)];
+        if (r.skipped.length > 0) {
+            const uniq = [...new Set(r.skipped)];
             const safe = uniq.slice(0,6)
                 .map(t => t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'))
                 .join(', ');
             txtAnalysis.innerHTML =
-                `<span style="color:#ffa726;">Importado com ${skipped.length} token(s) desconhecido(s): ${safe}${uniq.length>6?'…':''}</span>`;
+                `<span style="color:#ffa726;">Importado com ${r.skipped.length} token(s) desconhecido(s): ${safe}${uniq.length>6?'…':''}</span>`;
         } else {
             txtAnalysis.innerHTML =
                 `<span style="color:#66bb6a;">✓ Importação concluída. ${Object.keys(allNodes).length-1} lance(s)/variação(ões) carregados.</span>`;
