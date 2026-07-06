@@ -2627,7 +2627,8 @@ let bookMap = null;
         }
 
         // ── Tablita mode: rebuild position from tablita moves ─────────────
-        if (cfgMode === MODE_TABLITA && tablitaManager && tablitaManager.currentTablita) {
+        // Only rebuild if game hasn't started OR game has ended (not during ongoing game)
+        if (cfgMode === MODE_TABLITA && tablitaManager && tablitaManager.currentTablita && (!gameStarted || (gameStarted && gameEnded))) {
             const notation = tablitaManager.getTablitaNotation();
             const ns = new State();
             timeLimit = parseInt(document.getElementById('cfg-time').value);
