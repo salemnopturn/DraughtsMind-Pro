@@ -87,18 +87,12 @@
     // ════════════════════════════════════════════════════════════════════════
     const TABLITAS = [
         { name: 'Clássica',    moves: ['c3-d4', 'd6-c5'] },
-        { name: 'Clássica VR', moves: ['c3-d4', 'd6-c5', 'd2-e3', 'b6-a5'] },
-        { name: 'Clássica FJ', moves: ['c3-d4', 'd6-c5', 'e3-f4', 'f6-g5'] },
         { name: 'Cruz',    moves: ['c3-d4', 'd6-e5'] },
         { name: 'Cruz JV', moves: ['c3-d4', 'd6-e5', 'b2-c3', 'e7-d6'] },
-        { name: 'Cruz FJ', moves: ['c3-d4', 'd6-e5', 'e3-f4', 'b6-a5'] },
-        { name: 'Cruz LP', moves: ['c3-d4', 'd6-e5', 'g3-f4', 'f6-g5'] },
         { name: 'Pioneiro',    moves: ['c3-d4', 'b6-c5'] },
         { name: 'Pioneiro NU', moves: ['c3-d4', 'b6-c5', 'd4xb6', 'a7xc5'] },
-        { name: 'Pioneiro FJ', moves: ['c3-d4', 'b6-c5', 'b2-c3', 'f6-g5'] },
         { name: 'Flank',    moves: ['c3-d4', 'f6-g5'] },
         { name: 'Flank NR', moves: ['c3-d4', 'f6-g5', 'd4-c5', 'd6xb4'] },
-        { name: 'Flank EJ', moves: ['c3-d4', 'f6-g5', 'e3-f4', 'e5xg3'] },
         { name: 'Russa',    moves: ['c3-b4'] },
         { name: 'Russa WS', moves: ['c3-b4', 'f6-e5'] },
         { name: 'Russa UR', moves: ['c3-b4', 'b6-c5'] },
@@ -109,22 +103,12 @@
         { name: 'g3-f4 VS', moves: ['g3-f4', 'd6-e5'] },
         { name: 'g3-f4 WT', moves: ['g3-f4', 'f6-g5'] },
         { name: 'g3-h4 VS', moves: ['g3-h4', 'd6-e5'] },
-        { name: 'h2-g3 WS', moves: ['h2-g3', 'f6-e5'] },
-        { name: 'h2-g3 b6', moves: ['h2-g3', 'b6-c5'] },
-        { name: 'h2-g3 d6', moves: ['h2-g3', 'd6-e5'] },
-        { name: 'f2-e3 c7', moves: ['f2-e3', 'c7-d6'] },
-        { name: 'f2-e3 b6', moves: ['f2-e3', 'b6-c5'] },
-        { name: 'f2-e3 f6', moves: ['f2-e3', 'f6-g5'] },
-        { name: 'f2-g3 g5', moves: ['f2-g3', 'g5-h4'] },
         { name: 'Cruz Profunda',   moves: ['c3-d4', 'd6-e5', 'b2-c3', 'e7-d6', 'e3-f4', 'b6-a5'] },
-        { name: 'Flank Profunda',  moves: ['c3-d4', 'f6-g5', 'd4-c5', 'd6xb4', 'a3xc5', 'b6-a5'] },
         { name: 'Pioneiro Prof.',  moves: ['c3-d4', 'b6-c5', 'd4xb6', 'a7xc5', 'b2-c3', 'f6-g5'] },
         { name: 'Russa Profunda',  moves: ['c3-b4', 'f6-e5', 'b4-a5', 'b6-c5', 'g3-h4', 'e5-f4'] },
-        { name: 'Clássica Prof.',  moves: ['c3-d4', 'd6-c5', 'd2-e3', 'b6-a5', 'e3-f4', 'f6-g5'] },
         { name: 'Turca',           moves: ['c3-d4', 'd6-e5', 'b2-c3', 'b6-a5', 'a3-b4', 'c7-b6'] },
         { name: 'Americana',       moves: ['c3-d4', 'b6-c5', 'd4xb6', 'a7xc5', 'b2-c3', 'f6-e5'] },
         { name: 'a3-b4',   moves: ['c3-d4', 'd6-e5', 'b2-c3', 'b6-a5', 'a3-b4'] },
-        { name: 'a1-b2',   moves: ['c3-d4', 'd6-c5', 'd2-e3', 'e7-d6', 'a1-b2'] },
     ];
 
     // ── Tablita match manager (inline) ──────────────────────────────────────
@@ -5324,11 +5308,11 @@
             const moveNum=Math.floor(ply/2)+1;
             if (isWhite) out+=`${moveNum}. `;
             else if (curr===node||prevHadVars) out+=`${moveNum}... `;
-            out+=move2PDN(main.move)+' ';
             for (let i=1;i<curr.children.length;i++) {
                 const v=curr.children[i];
                 out+=`( ${moveNum}${isWhite?'.':'...'} ${move2PDN(v.move)} ${generatePDN(v,ply+1)}) `;
             }
+            out+=move2PDN(main.move)+' ';
             prevHadVars=hasVars; curr=main; ply++;
         }
         return out;
@@ -5398,7 +5382,7 @@
 
         for (const tk of tokens) {
             if (tk === '(') {
-                stack.push(curr); curr = curr.parent || rootNode;
+                stack.push(curr);
             } else if (tk === ')') {
                 if (stack.length > 0) curr = stack.pop();
             } else {
@@ -5421,6 +5405,7 @@
         currentNode = rootNode; gameState = currentNode.state.clone();
         timeW = timeLimit; timeB = timeLimit;
         editMode = false;
+        gameResultType = null;
         gameStarted = false; gameEnded = false; isComputing = false;
         selIdx = -1; valTgt = []; lastM = null;
         stopClock();
