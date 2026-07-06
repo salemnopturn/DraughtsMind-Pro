@@ -4627,12 +4627,10 @@
     }
 
     function render() {
-        // Collect capture path and victim squares for the selected piece's moves
-        const capturePathSquares = new Set();
+        // Collect capture victim squares for the selected piece's moves
         const captureVictimSquares = new Set();
         if (selIdx !== -1 && valTgt.length > 0 && valTgt[0].captured.length > 0) {
             for (const m of valTgt) {
-                for (const sq of m.path) capturePathSquares.add(sq);
                 for (const sq of m.captured) captureVictimSquares.add(sq);
             }
         }
@@ -5283,21 +5281,23 @@
     document.getElementById('btn-nav-end').onclick  =()=>{ let c=currentNode; while(c.children.length>0) c=c.children[0]; navToId(c.id); };
 
     // ── PDN: Conversão de Coordenadas ─────────────────────────────────────────
-    // Numeração PDN: quadrado 1 = canto inferior-esquerdo (Brancas),
-    //                quadrado 32 = canto superior-direito (Vermelhas).
-    // No mapeamento interno (rows 0-2 = Brancas, rows 5-7 = Vermelhas):
-    //   idxToNum usa mapeamento direto (row*4+offset+1).
-    //   numToIdxAlt usa mapeamento espelhado para compatibilidade com
-    //   arquivos PDN de outras fontes (ex: Classic, lidraughts).
+    // Numeração PDN padrão (FMJD/CBD): quadrado 1 = b1 (canto inferior-esquerdo
+    //   escuro), quadrado 32 = g8 (canto superior-direito escuro).
+    //   Esquerda→direita, baixo→cima, apenas casas escuras.
+    // No mapeamento interno (rows 0=topo, rows 7=baixo):
+    //   idxToNum: mapeia row 7→lins 1-4, row 6→5-8, ..., row 0→29-32.
+    //   numToIdx: inverso correto (7-r).
+    //   numToIdxAlt: mapeamento espelhado para compatibilidade com
+    //   arquivos PDN de outras fontes (ex: lidraughts, international).
     function idxToNum(idx) {
         const r = idx >> 3, c = idx & 7;
         if ((r + c) % 2 !== 0) return -1;
         const offset = r % 2 === 0 ? c / 2 : (c - 1) / 2;
-        return r * 4 + offset + 1;
+        return (7 - r) * 4 + offset + 1;
     }
     function numToIdx(num) {
         if (num < 1 || num > 32) return -1;
-        const r = Math.floor((num - 1) / 4), offset = (num - 1) % 4;
+        const r = 7 - Math.floor((num - 1) / 4), offset = (num - 1) % 4;
         const c = r % 2 === 0 ? offset * 2 : offset * 2 + 1;
         return r * 8 + c;
     }
@@ -5383,6 +5383,7 @@
         const moves = state.getMoves();
         let found = moves.find(m => move2Str(m).toLowerCase() === tk.toLowerCase());
         if (found) return found;
+        // 1st fallback: numeric PDN (num-num or numxnum)
         if (/^\d+([-x:]\d+)+$/i.test(tk)) {
             const pts = tk.split(/[-x:]/i).map(Number), isCapture = /[x:]/i.test(tk);
             const conv = useAlt ? numToIdxAlt : numToIdx;
@@ -5398,17 +5399,37 @@
                 if (poss.length > 0) return poss[0];
             }
         }
+        // 2nd fallback: algebraic notation (e.g. a3-b4, c5xe7)
+        if (/^[a-h][1-8]([-x:][a-h][1-8])+$/i.test(tk)) {
+            const sqs = tk.split(/[-x:]/i);
+            const sIdx = algToIdx(sqs[0]), eIdx = algToIdx(sqs[sqs.length - 1]);
+            if (sIdx >= 0 && eIdx >= 0) {
+                const poss = moves.filter(m => m.from === sIdx && m.to === eIdx);
+                if (poss.length > 0) return poss[0];
+            }
+        }
         return null;
     }
 
     function parsePDNTokens(tokens, useAlt) {
         const ns = new State(); ns.timeW = timeLimit; ns.timeB = timeLimit;
         const rn = { id: 0, parent: null, moveStr: null, state: ns, children: [] };
-        let nid = 1, curr = rn, stack = [], skipped = [];
+        let nid = 1, curr = rn, skipped = [];
+        // varDepthStack tracks variation nesting depth.
+        // varDepth = 0 → main line, varDepth > 0 → inside variation.
+        // Children created at varDepth > 0 are flagged _var:true so they
+        // can be reordered after main‑line children at the end of parsing.
+        const varDepthStack = [];
+        let varDepth = 0;
         for (const tk of tokens) {
-            if (tk === '(') { stack.push(curr); curr = curr.parent || rn; }
-            else if (tk === ')') { if (stack.length > 0) curr = stack.pop(); }
-            else {
+            if (tk === '(') {
+                varDepthStack.push(varDepth);
+                varDepth = 1; // next direct children are variation branches
+            } else if (tk === ')') {
+                if (varDepthStack.length > 0) {
+                    varDepth = varDepthStack.pop();
+                }
+            } else {
                 const found = tryMatchMove(curr.state, tk, useAlt);
                 if (!found) { skipped.push(tk); continue; }
                 const mStr = move2Str(found);
@@ -5417,11 +5438,25 @@
                 else {
                     const ns2 = curr.state.clone();
                     ns2.applyMove(found); ns2.timeW = timeLimit; ns2.timeB = timeLimit;
-                    const nd = { id: nid++, parent: curr, moveStr: mStr, state: ns2, children: [], move: found };
+                    const nd = { id: nid++, parent: curr, moveStr: mStr,
+                                 state: ns2, children: [], move: found,
+                                 _var: varDepth > 0 };
                     curr.children.push(nd); allNodes[nd.id] = nd; curr = nd;
                 }
             }
         }
+        // Post‑process: reorder children so main‑line (non-var) come first
+        const reorderNode = (nd) => {
+            for (const c of nd.children) reorderNode(c);
+            if (nd.children.length > 1) {
+                const main = nd.children.filter(c => !c._var);
+                const vari = nd.children.filter(c => c._var);
+                if (main.length > 0 && vari.length > 0) {
+                    nd.children = [...main, ...vari];
+                }
+            }
+        };
+        reorderNode(rn);
         return { rootNode: rn, skipped, nodeCount: nid - 1 };
     }
 

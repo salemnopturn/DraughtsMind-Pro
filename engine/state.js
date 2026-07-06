@@ -226,7 +226,7 @@ class State {
         const { wP, bP, wK, bK } = this;
         const endgameLimit = (() => {
             if (wP === 0 && bP === 0) {
-                if (wK === 1 && bK === 1) return 4;
+                if (wK === 1 && bK === 1) return 9;
                 if (wK <= 2 && bK <= 2 && wK >= 1 && bK >= 1) return 10;
                 if ((wK === 3 && bK === 1) || (bK === 3 && wK === 1)) {
                     const loneColor = wK === 1 ? W_KING : V_KING;

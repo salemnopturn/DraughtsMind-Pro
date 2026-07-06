@@ -100,6 +100,64 @@ DraughtsMind Pro/
 └── README.md
 ```
 
+## PDN (Portable Draughts Notation) — Ecossistema DraughtsMind
+
+O formato PDN do DraughtsMind Pro foi projetado para funcionar exclusivamente dentro do ecossistema do software, garantindo total compatibilidade entre exportação e importação.
+
+### Convenção de Numeração (FMJD/CBD)
+
+```
+  a  b  c  d  e  f  g  h
+8 29 . 30 . 31 . 32 .     (linha 0 — topo interno)
+7  . 25 . 26 . 27 . 28    (linha 1)
+6 21 . 22 . 23 . 24 .     (linha 2)
+5  . 17 . 18 . 19 . 20    (linha 3)
+4 13 . 14 . 15 . 16 .     (linha 4)
+3  .  9 . 10 . 11 . 12    (linha 5)
+2  5 .  6 .  7 .  8 .     (linha 6)
+1  .  1 .  2 .  3 .  4    (linha 7 — base)
+```
+
+- Quadrado **1** = b1 (canto inferior-esquerdo escuro, peças Vermelhas/Pretas)
+- Quadrado **32** = g8 (canto superior-direito escuro, peças Brancas)
+- Apenas casas **escuras** são numeradas
+
+### Formato dos Lances
+
+| Tipo | Exemplo | Significado |
+|------|---------|-------------|
+| Movimento simples | `21-17` | Peça da casa 21 move para casa 17 |
+| Captura | `21x14` | Peça da casa 21 captura na casa 14 |
+| Captura múltipla | `21x14x7` | Captura em cadeia: 21 → 14 → 7 |
+
+### Exportação
+
+Arquivos `.pdn` exportados usam cabeçalhos padrão:
+```
+[Event "DraughtsMind Pro Match"]
+[Site "DraughtsMind Pro vX.Y"]
+[Date "2026.07.06"]
+[White "Human"]
+[Black "Engine (ply N)"]
+[Result "2-0"]
+[GameType "26"]
+```
+
+Variações são aninhadas com parênteses: `1. 21-17 ( 12-16 ) 11-15`
+
+### Importação
+
+O importador tenta automaticamente duas estratégias de numeração e escolhe a que produzir mais acertos:
+1. **Padrão FMJD/CBD** (1=b1, 32=g8) — usada nas exportações do DraughtsMind Pro
+2. **Espelhada** (33-num) — compatível com algumas fontes externas
+
+Também aceita notação algébrica (ex: `a3-b4`, `c5xe7`) como fallback adicional.
+
+### Compatibilidade Externa
+
+- **Arquivos de outros softwares**: O importador tenta mapeamento alternativo automaticamente
+- **Notação internacional FMJD**: Compatível quando usa a mesma numeração padrão (1-32)
+
 ## Quick Start
 
 ### Prerequisites
