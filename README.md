@@ -134,6 +134,7 @@ Ao clicar em **Exportar .pdn**, o software gera um arquivo com cabeçalhos padr�
 [GameType "26"]
 ```
 
+- **Posições Customizadas**: Se o jogo iniciar a partir de uma posição customizada (modo Sandbox/Editor), o arquivo exportado incluirá automaticamente as tags `[SetUp "1"]` e `[FEN "..."]` contendo a posição inicial em formato FEN.
 - **Variações**: São aninhadas recursivamente com parênteses, ex: `1. a3-b4 b6-a5 ( d6-c5 ) 2. b2-a3`
 - **Resultados**: Inseridos ao final da partida (`2-0`, `0-2`, `1/2-1/2`, `*`) e mapeados fielmente.
 
@@ -142,6 +143,7 @@ Ao clicar em **Exportar .pdn**, o software gera um arquivo com cabeçalhos padr�
 Ao **Importar .pdn** ou **Colar Sequência PDN**, o parser realiza a leitura e reconstrução exata da árvore do jogo.
 
 - **Importação Universal**: Suporta lances descritos em coordenadas ou em numeração clássica (1 a 32). A árvore é carregada com os movimentos traduzidos e validados.
+- **Detecção de FEN de Partida**: O importador detecta a presença de uma tag `[FEN "..."]` no cabeçalho e inicializa o tabuleiro com a posição correspondente antes de reproduzir a sequência de lances.
 - **Validação das Regras**: Todo lance importado é validado ativamente de acordo com as regras oficiais de Damas Brasileiras (como lei da maioria, movimentos de dama de longo alcance, promoções automáticas e capturas compulsórias).
 - **Tratamento de Variações**: O importador utiliza uma pilha de restauração (`restoreStack`) para processar corretamente parênteses aninhados, reordenando as ramificações de modo que a linha principal venha antes das variações secundárias.
 

@@ -42,47 +42,67 @@ function numToIdxAlt(num) {
 
 function tryMatchMove(state, tk) {
     const moves = state.getMoves();
-    let found = moves.find(m => move2Str(m).toLowerCase() === tk.toLowerCase());
+    if (moves.length === 0) return null;
+
+    // Clean token from any trailing annotations like !, ?, etc.
+    const cleanTk = tk.replace(/[!?+#]+$/g, '');
+
+    // 1. Try exact string match first
+    let found = moves.find(m => move2Str(m).toLowerCase() === cleanTk.toLowerCase());
     if (found) return found;
-    if (/^[a-h][1-8]([-x:][a-h][1-8])+$/i.test(tk)) {
-        const sqs = tk.split(/[-x:]/i);
-        const sIdx = algToIdx(sqs[0]), eIdx = algToIdx(sqs[sqs.length - 1]);
-        if (sIdx >= 0 && eIdx >= 0) {
-            let poss = moves.filter(m => m.from === sIdx && m.to === eIdx);
-            if (poss.length > 1 && sqs.length > 2) {
-                const ep = sqs.slice(1).map(algToIdx);
-                const nw = poss.filter(m => m.path.length === ep.length && m.path.every((sq, i) => sq === ep[i]));
-                if (nw.length > 0) poss = nw;
+
+    // Helper to check if a sequence of squares matches a move
+    function matchesMove(m, tkSqs) {
+        if (tkSqs.length < 2) return false;
+        const M = m.captured.length > 0 ? [m.from, ...m.path] : [m.from, m.to];
+        if (tkSqs[0] !== M[0]) return false;
+        
+        // Check if tkSqs is a subsequence of M
+        let i = 0, j = 0;
+        while (i < tkSqs.length && j < M.length) {
+            if (tkSqs[i] === M[j]) i++;
+            j++;
+        }
+        return i === tkSqs.length;
+    }
+
+    // 2. Try parsing as algebraic coordinate notation (e.g. c3-d4, c3xe5, f6-d4-b2, c3:e5)
+    if (/^[a-h][1-8]([-x:][a-h][1-8])+$/i.test(cleanTk)) {
+        const parts = cleanTk.split(/[-x:]/i);
+        const tkSqs = parts.map(algToIdx);
+        if (tkSqs.every(idx => idx >= 0)) {
+            const matches = moves.filter(m => matchesMove(m, tkSqs));
+            if (matches.length > 0) {
+                const exactEnd = matches.find(m => tkSqs[tkSqs.length - 1] === m.to);
+                if (exactEnd) return exactEnd;
+                return matches[0];
             }
-            const isCapture = /[x:]/i.test(tk) || sqs.length > 2;
-            if (poss.length > 1 && isCapture) {
-                const c = poss.filter(m => m.captured.length > 0);
-                if (c.length > 0) poss = c;
-            }
-            if (poss.length > 0) return poss[0];
         }
     }
-    if (/^\d+([-x:]\d+)+$/i.test(tk)) {
-        const pts = tk.split(/[-x:]/i).map(Number), isCapture = /[x:]/i.test(tk) || pts.length > 2;
+
+    // 3. Try parsing as standard numeric notation (e.g. 21-17, 21x17, 21:17)
+    if (/^\d+([-x:]\d+)+$/i.test(cleanTk)) {
+        const parts = cleanTk.split(/[-x:]/i).map(Number);
         for (const useAlt of [false, true]) {
             const conv = useAlt ? numToIdxAlt : numToIdx;
-            const sIdx = conv(pts[0]), eIdx = conv(pts[pts.length - 1]);
-            if (sIdx >= 0 && eIdx >= 0) {
-                let poss = moves.filter(m => m.from === sIdx && m.to === eIdx);
-                if (poss.length > 1 && pts.length > 2) {
-                    const ep = pts.slice(1).map(conv);
-                    const nw = poss.filter(m => m.path.length === ep.length && m.path.every((sq, i) => sq === ep[i]));
-                    if (nw.length > 0) poss = nw;
+            const tkSqs = parts.map(conv);
+            if (tkSqs.every(idx => idx >= 0)) {
+                const matches = moves.filter(m => matchesMove(m, tkSqs));
+                if (matches.length > 0) {
+                    const exactEnd = matches.find(m => tkSqs[tkSqs.length - 1] === m.to);
+                    if (exactEnd) return exactEnd;
+                    return matches[0];
                 }
-                if (poss.length > 1 && isCapture) {
-                    const c = poss.filter(m => m.captured.length > 0);
-                    if (c.length > 0) poss = c;
-                }
-                if (poss.length > 0) return poss[0];
             }
         }
     }
+
     return null;
+}
+
+function looksLikeMove(tk) {
+    const clean = tk.replace(/[!?+#]+$/g, '');
+    return /^[a-h][1-8]([-x:][a-h][1-8])+$/i.test(clean) || /^\d+([-x:]\d+)+$/i.test(clean);
 }
 
 function parsePDNTokens(tokens) {
@@ -104,7 +124,12 @@ function parsePDNTokens(tokens) {
             varDepth = Math.max(0, varDepth - 1);
         } else {
             const found = tryMatchMove(curr.state, tk);
-            if (!found) { skipped.push(tk); continue; }
+            if (!found) {
+                if (looksLikeMove(tk)) {
+                    skipped.push(tk);
+                }
+                continue;
+            }
             const mStr = move2Str(found);
             const ex = curr.children.find(c => c.moveStr === mStr);
             if (ex) { curr = ex; }
@@ -291,6 +316,49 @@ console.log('\n=== Test 9: Standard Numeric Format Support ===');
     if (matched !== null) {
         assert(move2PDN(matched) === 'a3-b4', 'Matched numeric move exports as coordinate "a3-b4"');
     }
+}
+
+// ── Test 10: Abbreviated Captures ───────────────────────────────────────────
+console.log('\n=== Test 10: Abbreviated Captures ===');
+{
+    const s = new State();
+    s.board.fill(0);
+    s.board[45] = 1;  // W_MAN f6 (idx 45)
+    s.board[36] = -1; // V_MAN e5 (idx 36)
+    s.board[18] = -1; // V_MAN c3 (idx 18)
+    s.turn = 1; s.wP = 1; s.bP = 2;
+    s._rehash(); s.hashHist = [s.hash];
+    
+    // The full capture is f6xd4xb2. 
+    // Test that the abbreviated token "f6xd4" (which only specifies the first hop) matches.
+    const matched = tryMatchMove(s, 'f6xd4');
+    assert(matched !== null, 'Abbreviated capture token "f6xd4" matches the full capture move');
+    if (matched !== null) {
+        assert(move2PDN(matched) === 'f6xd4xb2', `Matched move outputs as full coordinate capture: "${move2PDN(matched)}"`);
+    }
+
+    // Test that the numeric abbreviated token "22-15" (f6-d4) matches.
+    const matchedNum = tryMatchMove(s, '22-15');
+    assert(matchedNum !== null, 'Numeric abbreviated capture "22-15" matches the full capture move');
+}
+
+// ── Test 11: Text Comments inside Variations ───────────────────────────────
+console.log('\n=== Test 11: Text Comments inside Variations ===');
+{
+    const tokens = ['a3-b4', 'b6-a5', '(', 'd6-c5', 'is', 'bad', 'here', ')', 'b2-a3'];
+    const result = parsePDNTokens(tokens);
+    assert(result.skipped.length === 0, 'No tokens skipped (non-move words inside parentheses are silently ignored)');
+    assert(result.nodeCount === 4, '4 actual moves parsed successfully');
+}
+
+// ── Test 12: SetUp and FEN Setup ─────────────────────────────────────────────
+console.log('\n=== Test 12: SetUp and FEN Setup ===');
+{
+    // Custom FEN setup
+    const customFen = '1B1B1B1B/B1B1B1B1/8/8/8/8/1W1W1W1W/W1W1W1W1 W';
+    const s = new State();
+    s.loadFEN(customFen);
+    assert(s.toFEN() === customFen, 'FEN loaded and restored successfully');
 }
 
 // ── Summary ─────────────────────────────────────────────────────────────────
