@@ -5282,108 +5282,125 @@
     document.getElementById('btn-nav-next').onclick =()=>{ if(currentNode.children.length>0) navToId(currentNode.children[0].id); };
     document.getElementById('btn-nav-end').onclick  =()=>{ let c=currentNode; while(c.children.length>0) c=c.children[0]; navToId(c.id); };
 
-    // ── Exportação PDN ────────────────────────────────────────────────────────
+    // ── PDN: Conversão de Coordenadas ─────────────────────────────────────────
+    // Numeração PDN padrão: quadrado 1 = inferior-esquerdo (Branca),
+    //                       quadrado 32 = superior-direito (Vermelha).
     function idxToNum(idx) {
-        const r=idx>>3, c=idx&7;
-        if ((r+c)%2!==0) return -1;
-        const offset=r%2===0?c/2:(c-1)/2;
-        return r*4+offset+1;
+        const r = idx >> 3, c = idx & 7;
+        if ((r + c) % 2 !== 0) return -1;
+        const offset = r % 2 === 0 ? c / 2 : (c - 1) / 2;
+        return (7 - r) * 4 + offset + 1;
     }
     function numToIdx(num) {
-        if (num<1||num>32) return -1;
-        const r=Math.floor((num-1)/4), offset=(num-1)%4;
-        const c=r%2===0?offset*2:offset*2+1;
-        return r*8+c;
+        if (num < 1 || num > 32) return -1;
+        const r = 7 - Math.floor((num - 1) / 4), offset = (num - 1) % 4;
+        const c = r % 2 === 0 ? offset * 2 : offset * 2 + 1;
+        return r * 8 + c;
     }
+
+    // ── PDN: Formatação de Lance ──────────────────────────────────────────────
     function move2PDN(m) {
         if (!m) return '?';
-        const from=idxToNum(m.from);
-        if (m.captured.length>0) { const parts=[from]; for (const p of m.path) parts.push(idxToNum(p)); return parts.join('x'); }
-        return from+'-'+idxToNum(m.to);
+        const from = idxToNum(m.from);
+        if (m.captured.length > 0) {
+            const parts = [from];
+            for (const p of m.path) parts.push(idxToNum(p));
+            return parts.join('x');
+        }
+        return from + '-' + idxToNum(m.to);
     }
+
+    // ── PDN: Geração do Texto ─────────────────────────────────────────────────
     function generatePDN(node, plyCount) {
-        let out='', curr=node, ply=plyCount, prevHadVars=false;
-        while (curr.children.length>0) {
-            const main=curr.children[0], isWhite=(ply%2===0), hasVars=curr.children.length>1;
-            const moveNum=Math.floor(ply/2)+1;
-            if (isWhite) out+=`${moveNum}. `;
-            else if (curr===node||prevHadVars) out+=`${moveNum}... `;
-            for (let i=1;i<curr.children.length;i++) {
-                const v=curr.children[i];
-                out+=`( ${moveNum}${isWhite?'.':'...'} ${move2PDN(v.move)} ${generatePDN(v,ply+1)}) `;
+        let out = '', curr = node, ply = plyCount, prevHadVars = false;
+        while (curr.children.length > 0) {
+            const main = curr.children[0], isWhite = (ply % 2 === 0), hasVars = curr.children.length > 1;
+            const moveNum = Math.floor(ply / 2) + 1;
+            if (isWhite) out += `${moveNum}. `;
+            else if (curr === node || prevHadVars) out += `${moveNum}... `;
+            out += move2PDN(main.move) + ' ';
+            for (let i = 1; i < curr.children.length; i++) {
+                const v = curr.children[i];
+                out += `( ${moveNum}${isWhite ? '.' : '...'} ${move2PDN(v.move)} ${generatePDN(v, ply + 1)}) `;
             }
-            out+=move2PDN(main.move)+' ';
-            prevHadVars=hasVars; curr=main; ply++;
+            prevHadVars = hasVars; curr = main; ply++;
         }
         return out;
     }
-    document.getElementById('btn-export').onclick=async()=>{
-        let result='*';
+
+    // ── PDN: Exportação ───────────────────────────────────────────────────────
+    document.getElementById('btn-export').onclick = async () => {
+        let result = '*';
         if (gameEnded) {
-            if (gameResultType==='draw') result='1/2-1/2';
-            else if (gameResultType==='white') result='2-0';
-            else result='0-2';
+            if (gameResultType === 'draw') result = '1/2-1/2';
+            else if (gameResultType === 'white') result = '2-0';
+            else result = '0-2';
         }
-        let txt=`[Event "DraughtsMind Elite Match"]\n[GameType "26"]\n[Result "${result}"]\n`;
-        txt+=`{DraughtsMind v${ENGINE_VERSION} | depth:${cfgDepth} | time:${timeLimit} | hash:${gameState.hash.toString(16).toUpperCase().slice(-8)}}\n\n`;
-        txt+=generatePDN(rootNode,0)+`\n${result}\n`;
-        const name=`mind_game_${Date.now()}.pdn`;
+        const now = new Date();
+        const dateStr = `${now.getFullYear()}.${String(now.getMonth()+1).padStart(2,'0')}.${String(now.getDate()).padStart(2,'0')}`;
+        let txt = '';
+        txt += `[Event "DraughtsMind Pro Match"]\n`;
+        txt += `[Site "DraughtsMind Pro v${ENGINE_VERSION}"]\n`;
+        txt += `[Date "${dateStr}"]\n`;
+        txt += `[Round "1"]\n`;
+        txt += `[White "Human"]\n`;
+        txt += `[Black "Engine (ply ${cfgDepth})"]\n`;
+        txt += `[Result "${result}"]\n`;
+        txt += `[GameType "26"]\n`;
+        txt += `\n`;
+        txt += `{DraughtsMind Pro v${ENGINE_VERSION} | depth:${cfgDepth} | time:${timeLimit} | hash:${gameState.hash.toString(16).toUpperCase().slice(-8)}}\n\n`;
+        txt += generatePDN(rootNode, 0).trim() + `\n${result}\n`;
+        const name = `mind_game_${Date.now()}.pdn`;
         if (window.electronAPI?.saveFile) {
             try {
-                const r=await window.electronAPI.saveFile({ content:txt, filename:name, filters:[{name:'PDN',extensions:['pdn']}] });
-                if (r&&r.success) { txtAnalysis.innerHTML=`<span style="color:#66bb6a;">✓ Exportado: ${r.path}</span>`; return; }
+                const r = await window.electronAPI.saveFile({ content: txt, filename: name, filters: [{ name: 'PDN', extensions: ['pdn'] }] });
+                if (r && r.success) { txtAnalysis.innerHTML = `<span style="color:#66bb6a;">✓ Exportado: ${r.path}</span>`; return; }
             } catch(e) { /* fallback below */ }
         } else if (window.showSaveFilePicker) {
             try {
-                const h=await window.showSaveFilePicker({ suggestedName:name, types:[{description:'PDN',accept:{'text/plain':['.pdn']}}] });
-                const w=await h.createWritable(); await w.write(txt); await w.close();
-                txtAnalysis.innerHTML=`<span style="color:#66bb6a;">✓ Exportado: ${name}</span>`; return;
-            } catch(e) { if(e.name==='AbortError') return; }
+                const h = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: 'PDN', accept: { 'text/plain': ['.pdn'] } }] });
+                const w = await h.createWritable(); await w.write(txt); await w.close();
+                txtAnalysis.innerHTML = `<span style="color:#66bb6a;">✓ Exportado: ${name}</span>`; return;
+            } catch(e) { if (e.name === 'AbortError') return; }
         }
-        const blob=new Blob([txt],{type:'text/plain'}), url=URL.createObjectURL(blob);
-        const a=document.createElement('a'); a.href=url; a.download=name; a.style.display='none';
+        const blob = new Blob([txt], { type: 'text/plain' }), url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); a.href = url; a.download = name; a.style.display = 'none';
         document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        setTimeout(()=>URL.revokeObjectURL(url),5000);
-        txtAnalysis.innerHTML=`<span style="color:#66bb6a;">✓ Download: ${name}</span>`;
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+        txtAnalysis.innerHTML = `<span style="color:#66bb6a;">✓ Download: ${name}</span>`;
     };
 
-    // ── Importação PDN ────────────────────────────────────────────────────────
-    function tryMatchMove(state, tk, useAlt) {
-        const moves=state.getMoves();
-        let found=moves.find(m=>move2Str(m).toLowerCase()===tk.toLowerCase());
+    // ── PDN: Importação ───────────────────────────────────────────────────────
+    function tryMatchMove(state, tk) {
+        const moves = state.getMoves();
+        let found = moves.find(m => move2Str(m).toLowerCase() === tk.toLowerCase());
         if (found) return found;
         if (/^\d+([-x:]\d+)+$/i.test(tk)) {
-            const pts=tk.split(/[-x:]/i).map(Number), isCapture=/[x:]/i.test(tk);
-            const conv = useAlt ? numToIdxAlt : numToIdx;
-            const sIdx=conv(pts[0]), eIdx=conv(pts[pts.length-1]);
-            if (sIdx>=0&&eIdx>=0) {
-                let poss=moves.filter(m=>m.from===sIdx&&m.to===eIdx);
-                if (poss.length>1&&pts.length>2) {
-                    const ep=pts.slice(1).map(conv);
-                    const nw=poss.filter(m=>m.path.length===ep.length&&m.path.every((sq,i)=>sq===ep[i]));
-                    if (nw.length>0) poss=nw;
+            const pts = tk.split(/[-x:]/i).map(Number), isCapture = /[x:]/i.test(tk);
+            const sIdx = numToIdx(pts[0]), eIdx = numToIdx(pts[pts.length - 1]);
+            if (sIdx >= 0 && eIdx >= 0) {
+                let poss = moves.filter(m => m.from === sIdx && m.to === eIdx);
+                if (poss.length > 1 && pts.length > 2) {
+                    const ep = pts.slice(1).map(numToIdx);
+                    const nw = poss.filter(m => m.path.length === ep.length && m.path.every((sq, i) => sq === ep[i]));
+                    if (nw.length > 0) poss = nw;
                 }
-                if (poss.length>1&&isCapture) { const c=poss.filter(m=>m.captured.length>0); if(c.length>0) poss=c; }
-                if (poss.length>0) return poss[0];
+                if (poss.length > 1 && isCapture) { const c = poss.filter(m => m.captured.length > 0); if (c.length > 0) poss = c; }
+                if (poss.length > 0) return poss[0];
             }
         }
         return null;
     }
 
-    function numToIdxAlt(num) {
-        if (num<1||num>32) return -1;
-        return numToIdx(33 - num);
-    }
-
-    function parsePDNTokens(tokens, useAlt) {
+    function parsePDNTokens(tokens) {
         const ns = new State(); ns.timeW = timeLimit; ns.timeB = timeLimit;
-        const rn = { id:0, parent:null, moveStr:null, state:ns, children:[] };
+        const rn = { id: 0, parent: null, moveStr: null, state: ns, children: [] };
         let nid = 1, curr = rn, stack = [], skipped = [];
         for (const tk of tokens) {
             if (tk === '(') { stack.push(curr); }
             else if (tk === ')') { if (stack.length > 0) curr = stack.pop(); }
             else {
-                const found = tryMatchMove(curr.state, tk, useAlt);
+                const found = tryMatchMove(curr.state, tk);
                 if (!found) { skipped.push(tk); continue; }
                 const mStr = move2Str(found);
                 const ex = curr.children.find(c => c.moveStr === mStr);
@@ -5391,7 +5408,7 @@
                 else {
                     const ns2 = curr.state.clone();
                     ns2.applyMove(found); ns2.timeW = timeLimit; ns2.timeB = timeLimit;
-                    const nd = { id:nid++, parent:curr, moveStr:mStr, state:ns2, children:[], move:found };
+                    const nd = { id: nid++, parent: curr, moveStr: mStr, state: ns2, children: [], move: found };
                     curr.children.push(nd); curr = nd;
                 }
             }
@@ -5400,26 +5417,21 @@
     }
 
     function loadEBNF(str) {
+        const headers = {};
+        str.replace(/^\[(\w+)\s+"([^"]*)"\]/gm, (_, key, val) => { headers[key.toLowerCase()] = val; });
+
         str = str.replace(/^%[^\r\n]*/gm, ' ');
         str = str.replace(/^\[[^\]]*\][ \t]*/gm, ' ');
         let prev;
-        do { prev=str; str=str.replace(/\{[^{}]*\}/g,' '); } while (str!==prev);
+        do { prev = str; str = str.replace(/\{[^{}]*\}/g, ' '); } while (str !== prev);
         str = str.replace(/\r?\n/g, ' ');
         str = str.replace(/\$\d{1,3}/g, ' ').replace(/[?!]+/g, ' ');
-        str = str.replace(/\b(1\/2-1\/2|2-0|0-2|1-1|1-0|0-1)\b/g, ' ').replace(/\*/g,' ');
+        str = str.replace(/\b(1\/2-1\/2|2-0|0-2|1-1|1-0|0-1)\b/g, ' ').replace(/\*/g, ' ');
         str = str.replace(/\d+\.+/g, ' ');
         str = str.replace(/\(/g, ' ( ').replace(/\)/g, ' ) ');
 
         const tokens = str.split(/\s+/).filter(t => t.length > 0);
-
-        let r1 = parsePDNTokens(tokens, false);
-        let r2 = parsePDNTokens(tokens, true);
-        let r;
-        if (r2.nodeCount > r1.nodeCount && r2.skipped.length < r1.skipped.length) {
-            r = r2;
-        } else {
-            r = r1;
-        }
+        const r = parsePDNTokens(tokens);
 
         rootNode = r.rootNode;
         nextNodeId = r.nodeCount + 1;
@@ -5431,6 +5443,11 @@
         timeW = timeLimit; timeB = timeLimit;
         editMode = false;
         gameResultType = null;
+        if (headers.result) {
+            if (headers.result === '1/2-1/2') gameResultType = 'draw';
+            else if (headers.result === '2-0') gameResultType = 'white';
+            else if (headers.result === '0-2') gameResultType = 'red';
+        }
         gameStarted = false; gameEnded = false; isComputing = false;
         selIdx = -1; valTgt = []; lastM = null;
         stopClock();
@@ -5439,24 +5456,25 @@
         document.getElementById('branch-modal').style.display = 'none';
         render();
 
+        const nodeCount = Object.keys(allNodes).length - 1;
         if (r.skipped.length > 0) {
             const uniq = [...new Set(r.skipped)];
-            const safe = uniq.slice(0,6)
-                .map(t => t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'))
+            const safe = uniq.slice(0, 6)
+                .map(t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'))
                 .join(', ');
             txtAnalysis.innerHTML =
-                `<span style="color:#ffa726;">Importado com ${r.skipped.length} token(s) desconhecido(s): ${safe}${uniq.length>6?'…':''}</span>`;
+                `<span style="color:#ffa726;">Importado com ${r.skipped.length} token(s) desconhecido(s): ${safe}${uniq.length > 6 ? '…' : ''}</span>`;
         } else {
             txtAnalysis.innerHTML =
-                `<span style="color:#66bb6a;">✓ Importação concluída. ${Object.keys(allNodes).length-1} lance(s)/variação(ões) carregados.</span>`;
+                `<span style="color:#66bb6a;">✓ Importação concluída. ${nodeCount} lance(s)/variação(ões) carregados.</span>`;
         }
     }
 
-    document.getElementById('btn-import').onchange=e=>{
-        const f=e.target.files[0]; if(!f) return;
-        const r=new FileReader(); r.onload=ev=>loadEBNF(ev.target.result); r.readAsText(f);
+    document.getElementById('btn-import').onchange = e => {
+        const f = e.target.files[0]; if (!f) return;
+        const r = new FileReader(); r.onload = ev => loadEBNF(ev.target.result); r.readAsText(f);
     };
-    document.getElementById('btn-apply-paste').onclick=()=>loadEBNF(document.getElementById('paste-area').value);
+    document.getElementById('btn-apply-paste').onclick = () => loadEBNF(document.getElementById('paste-area').value);
 
     // ── Inicialização ─────────────────────────────────────────────────────────
     buildOpeningBook();
