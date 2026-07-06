@@ -102,14 +102,16 @@ DraughtsMind Pro/
 
 ## PDN (Portable Draughts Notation) — Ecossistema DraughtsMind Pro
 
-A funcionalidade de importação e exportação de arquivos `.pdn` no **DraughtsMind Pro** foi projetada **exclusivamente para o seu próprio ecossistema**, utilizando um formato proprietário de notação de coordenadas destinado apenas à interoperabilidade entre diferentes versões do próprio software.
+A funcionalidade de importação e exportação de arquivos `.pdn` no **DraughtsMind Pro** opera em duas frentes complementares: um **mecanismo universal de importação** e um **padrão exclusivo de exportação** por coordenadas.
 
 > [!IMPORTANT]
-> O objetivo principal é garantir fidelidade absoluta ao histórico completo das partidas e reconstrução exata do jogo durante a importação (incluindo variações, tempos e estados de jogo). **Não há compromisso ou suporte para compatibilidade com softwares de terceiros**, outras implementações do padrão PDN ou o formato de numeração clássico 1-32.
+> A exportação do **DraughtsMind Pro** utiliza **exclusivamente a notação por coordenadas** (`a3-b4`, `d4xb2`, etc.), sendo este o único padrão oficial de exportação do projeto, garantindo interoperabilidade absoluta entre diferentes versões do próprio software sem compromisso ou suporte oficial para softwares de terceiros.
+>
+> Contudo, para máxima facilidade de uso, o parser interno de importação é **universal**: ele é capaz de ler e decodificar tanto a notação oficial por coordenadas quanto os formatos clássicos baseados em numeração (FMJD/CBD de 1 a 32, ex: `21-17`, `11x18`), além de remover automaticamente metadados, comentários e numerações de lances, eliminando mensagens de *tokens desconhecidos*.
 
 ### Formato de Notação (Coordenadas)
 
-A notação utilizada é baseada puramente nas coordenadas das casas no tabuleiro (colunas de `a` a `h`, linhas de `1` a `8`). Apenas esse formato é suportado para importação e exportação:
+A notação padrão do projeto baseia-se puramente nas coordenadas das casas no tabuleiro (colunas de `a` a `h`, linhas de `1` a `8`):
 
 | Tipo de Lance | Exemplo | Significado |
 |---|---|---|
@@ -139,6 +141,7 @@ Ao clicar em **Exportar .pdn**, o software gera um arquivo com cabeçalhos padr�
 
 Ao **Importar .pdn** ou **Colar Sequência PDN**, o parser realiza a leitura e reconstrução exata da árvore do jogo.
 
+- **Importação Universal**: Suporta lances descritos em coordenadas ou em numeração clássica (1 a 32). A árvore é carregada com os movimentos traduzidos e validados.
 - **Validação das Regras**: Todo lance importado é validado ativamente de acordo com as regras oficiais de Damas Brasileiras (como lei da maioria, movimentos de dama de longo alcance, promoções automáticas e capturas compulsórias).
 - **Tratamento de Variações**: O importador utiliza uma pilha de restauração (`restoreStack`) para processar corretamente parênteses aninhados, reordenando as ramificações de modo que a linha principal venha antes das variações secundárias.
 
@@ -150,15 +153,15 @@ O código-fonte relevante reside no módulo de importação/exportação de `ren
 |---|---|
 | `move2PDN` | Converte um lance interno para o formato oficial de string de coordenadas (ex: `a3-b4` ou `d4xb2`). |
 | `generatePDN` | Percorre a árvore de jogo recursivamente para gerar o texto do arquivo PDN com variações. |
-| `tryMatchMove` | Analisa um token de coordenadas importado, casando-o de forma robusta e case-insensitive com um lance legal do estado do jogo. |
+| `tryMatchMove` | Analisa um token importado, casando-o de forma robusta e case-insensitive tanto em formato de coordenadas quanto em formato numérico (FMJD/CBD). |
 | `parsePDNTokens` | Reconstrói a árvore de nós da partida a partir dos lances lidos e variações parentetizadas. |
-| `loadEBNF` | Ponto de entrada da importação: remove cabeçalhos, comentários e encaminha os lances para reconstrução. |
+| `loadEBNF` | Ponto de entrada da importação: remove cabeçalhos, comentários (incluindo comentários iniciados por `;`), números e caracteres de espaçamento redundantes. |
 
 ### Testes do Ecossistema
 
-A suíte de testes em `engine/test_pdn.js` valida todo o ciclo de vida do formato de coordenadas, garantindo:
+A suíte de testes em `engine/test_pdn.js` valida todo o ciclo de vida do formato de coordenadas e a importação universal, garantindo:
 - Conversão round-trip de todas as casas do tabuleiro
-- Rejeição de formatos de numeração clássicos de 1-32
+- Suporte a importação universal de formato numérico de 1 a 32
 - Parsing correto de lances simples, capturas simples e múltiplas
 - Promoção a Dama e movimentos subsequentes de longo alcance
 - Reconstrução íntegra de árvores com variações aninhadas

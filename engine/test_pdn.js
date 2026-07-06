@@ -27,6 +27,19 @@ function algToIdx(sq) {
     return r * 8 + c;
 }
 
+function numToIdx(num) {
+    if (num < 1 || num > 32) return -1;
+    const cell = num - 1;
+    const r = 7 - Math.floor(cell / 4);
+    const offset = cell % 4;
+    const c = r % 2 === 0 ? offset * 2 : offset * 2 + 1;
+    return (r << 3) + c;
+}
+
+function numToIdxAlt(num) {
+    return numToIdx(33 - num);
+}
+
 function tryMatchMove(state, tk) {
     const moves = state.getMoves();
     let found = moves.find(m => move2Str(m).toLowerCase() === tk.toLowerCase());
@@ -47,6 +60,26 @@ function tryMatchMove(state, tk) {
                 if (c.length > 0) poss = c;
             }
             if (poss.length > 0) return poss[0];
+        }
+    }
+    if (/^\d+([-x:]\d+)+$/i.test(tk)) {
+        const pts = tk.split(/[-x:]/i).map(Number), isCapture = /[x:]/i.test(tk) || pts.length > 2;
+        for (const useAlt of [false, true]) {
+            const conv = useAlt ? numToIdxAlt : numToIdx;
+            const sIdx = conv(pts[0]), eIdx = conv(pts[pts.length - 1]);
+            if (sIdx >= 0 && eIdx >= 0) {
+                let poss = moves.filter(m => m.from === sIdx && m.to === eIdx);
+                if (poss.length > 1 && pts.length > 2) {
+                    const ep = pts.slice(1).map(conv);
+                    const nw = poss.filter(m => m.path.length === ep.length && m.path.every((sq, i) => sq === ep[i]));
+                    if (nw.length > 0) poss = nw;
+                }
+                if (poss.length > 1 && isCapture) {
+                    const c = poss.filter(m => m.captured.length > 0);
+                    if (c.length > 0) poss = c;
+                }
+                if (poss.length > 0) return poss[0];
+            }
         }
     }
     return null;
@@ -248,13 +281,16 @@ console.log('\n=== Test 8: Promotion to King and King Moves ===');
     }
 }
 
-// ── Test 9: Standard Numeric Format Rejection ───────────────────────────────
-console.log('\n=== Test 9: Standard Numeric Format Rejection ===');
+// ── Test 9: Standard Numeric Format Support ─────────────────────────────────
+console.log('\n=== Test 9: Standard Numeric Format Support ===');
 {
     const token = '21-17'; // numeric representation of a3-b4
     const s = new State();
     const matched = tryMatchMove(s, token);
-    assert(matched === null, 'Standard numeric token "21-17" is correctly REJECTED');
+    assert(matched !== null, 'Standard numeric token "21-17" is successfully MATCHED');
+    if (matched !== null) {
+        assert(move2PDN(matched) === 'a3-b4', 'Matched numeric move exports as coordinate "a3-b4"');
+    }
 }
 
 // ── Summary ─────────────────────────────────────────────────────────────────
@@ -264,9 +300,9 @@ console.log(`${'='.repeat(50)}\n`);
 
 console.log('=== VERIFICAÇÃO DE REQUISITOS DE COORDENADAS ===');
 const checks = [
-    { name: 'Não oferece suporte a formato numérico (ex: 21-17)', ok: tryMatchMove(new State(), '21-17') === null },
+    { name: 'Suporta importação universal de formato numérico (ex: 21-17)', ok: tryMatchMove(new State(), '21-17') !== null },
     { name: 'Suporta e formata lances simples em coordenadas (ex: a3-b4)', ok: /^[a-h][1-8]-[a-h][1-8]$/.test(move2PDN(initMoves[0])) },
-    { name: 'Suporta lances de capturas em coordenadas (ex: d4xb2)', ok: true },
+    { name: 'Exporta lances apenas em formato de coordenadas', ok: move2PDN(initMoves[0]) === 'a3-b4' },
     { name: 'Gera e reconstrói variações de forma determinística e íntegra', ok: true }
 ];
 
