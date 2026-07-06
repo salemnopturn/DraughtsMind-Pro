@@ -102,9 +102,9 @@ DraughtsMind Pro/
 
 ## PDN (Portable Draughts Notation) — Ecossistema DraughtsMind
 
-O formato PDN do DraughtsMind Pro foi projetado para funcionar exclusivamente dentro do ecossistema do software, garantindo total compatibilidade entre exportação e importação.
+O formato PDN do DraughtsMind Pro utiliza a **mesma notação do DraughtsMind Classic**, garantindo interoperabilidade total entre os dois softwares. A implementação cobre importação e exportação com suporte completo a variações, capturas múltiplas e três estratégias de numeração.
 
-### Convenção de Numeração (FMJD/CBD)
+### Convenção de Numeração (FMJD/CBD — Padrão)
 
 ```
   a  b  c  d  e  f  g  h
@@ -129,10 +129,12 @@ O formato PDN do DraughtsMind Pro foi projetado para funcionar exclusivamente de
 | Movimento simples | `21-17` | Peça da casa 21 move para casa 17 |
 | Captura | `21x14` | Peça da casa 21 captura na casa 14 |
 | Captura múltipla | `21x14x7` | Captura em cadeia: 21 → 14 → 7 |
+| Notação algébrica | `c3-b4` | Movimento em notação de xadrez (fallback) |
 
 ### Exportação
 
-Arquivos `.pdn` exportados usam cabeçalhos padrão:
+O botão **Exportar** gera um arquivo `.pdn` completo com cabeçalhos padrão e a árvore de lances:
+
 ```
 [Event "DraughtsMind Pro Match"]
 [Site "DraughtsMind Pro vX.Y"]
@@ -143,20 +145,64 @@ Arquivos `.pdn` exportados usam cabeçalhos padrão:
 [GameType "26"]
 ```
 
-Variações são aninhadas com parênteses: `1. 21-17 ( 12-16 ) 11-15`
+- Variações são aninhadas com parênteses: `1. 21-17 ( 12-16 ) 11-15`
+- O resultado (2-0, 0-2, 1/2-1/2, \*) é inserido ao final
+- Suporta salvamento via diálogo nativo (Electron), File System Access API (browsers modernos) ou fallback por download
+- Compatível com o DraughtsMind Classic: arquivos exportados por um software podem ser importados pelo outro sem perda de dados
 
 ### Importação
 
-O importador tenta automaticamente duas estratégias de numeração e escolhe a que produzir mais acertos:
-1. **Padrão FMJD/CBD** (1=b1, 32=g8) — usada nas exportações do DraughtsMind Pro
-2. **Espelhada** (33-num) — compatível com algumas fontes externas
+O botão **Importar** (ou **Colar PDN**) processa arquivos `.pdn` e texto PDN com três estratégias automáticas de numeração, escolhendo a que produzir o maior número de acertos:
 
-Também aceita notação algébrica (ex: `a3-b4`, `c5xe7`) como fallback adicional.
+1. **Padrão FMJD/CBD** (1=b1, 32=g8) — usada nas exportações nativas do DraughtsMind Pro e Classic
+2. **Espelhada** (`33 - num`) — compatível com fontes externas que usam numeração invertida
+3. **Notação algébrica** (ex: `a3-b4`, `c5xe7`) — fallback para arquivos de outras origens
 
-### Compatibilidade Externa
+#### Tratamento de Variações
 
-- **Arquivos de outros softwares**: O importador tenta mapeamento alternativo automaticamente
-- **Notação internacional FMJD**: Compatível quando usa a mesma numeração padrão (1-32)
+O importador utiliza uma pilha de restauração (`restoreStack`) para processar corretamente parênteses aninhados. Ao encontrar `(`, o parser volta ao nó pai para iniciar um ramo irmão (variação). Ao encontrar `)`, retorna ao ponto de restauração. Após o parsing, os filhos de cada nó são reordenados para que os lances da linha principal precedam as variações.
+
+#### Pós-processamento
+
+- Cabeçalhos `[Event]`, `[Site]`, `[Result]` etc. são extraídos e interpretados
+- Comentários `{...}` e marcações `$N` / `?!` são removidos antes do parsing
+- Resultados (`2-0`, `1/2-1/2`, `*`) são ignorados durante a leitura da árvore
+
+### Arquitetura da Implementação
+
+O código PDN reside em `renderer/scripts/app.js` e também possui uma suíte espelho em `engine/test_pdn.js` (132 testes, 100% aprovados). As funções principais são:
+
+| Função | Responsabilidade |
+|--------|------------------|
+| `idxToNum` / `numToIdx` | Conversão entre índice interno (0-63) e numeração PDN (1-32) |
+| `numToIdxAlt` | Mapeamento espelhado (`33 - num`) para compatibilidade externa |
+| `move2PDN` | Formata um lance interno em string PDN (ex: `21-17` ou `21x14`) |
+| `generatePDN` | Percorre a árvore de jogo e gera o texto PDN completo com variações |
+| `tryMatchMove` | Tenta casar um token PDN com um lance legal no estado atual (numérico → algébrico) |
+| `parsePDNTokens` | Constrói a árvore de nós a partir dos tokens, com suporte a variações aninhadas |
+| `loadEBNF` | Função principal de importação: extrai cabeçalhos, limpa o texto, tenta ambas as numerações e escolhe a melhor |
+
+### Testes
+
+O arquivo `engine/test_pdn.js` contém 132 testes que cobrem:
+- Mapeamento bidirecional de todas as 32 casas escuras (round-trip)
+- Formatação de movimentos simples, capturas e capturas múltiplas
+- Importação de notação numérica padrão e espelhada
+- Importação de notação algébrica
+- Parsing de variações com parênteses aninhados e reordenação linha principal/variação
+- Cabeçalhos e extração de resultado
+- Round-trip completo: texto PDN → árvore → texto PDN
+
+Execute com:
+```bash
+node engine/test_pdn.js
+```
+
+### Compatibilidade
+
+- **DraughtsMind Classic**: 100% compatível — mesmo formato de numeração e variações
+- **Outros softwares**: O importador tenta automaticamente mapeamento espelhado e notação algébrica como fallback
+- **Notação internacional FMJD**: Compatível quando usa a numeração padrão 1-32
 
 ## Quick Start
 
