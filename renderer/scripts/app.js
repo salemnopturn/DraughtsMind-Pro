@@ -584,6 +584,26 @@ window.onerror = function(message, source, lineno, colno, error) { console.error
             return false;
         }
 
+        toFEN() {
+            let fen = '';
+            for (let r = 0; r < 8; r++) {
+                let empty = 0;
+                for (let c = 0; c < 8; c++) {
+                    const p = this.board[r * 8 + c];
+                    if (p === EMPTY) { empty++; continue; }
+                    if (empty > 0) { fen += empty; empty = 0; }
+                    if (p === W_MAN) fen += 'W';
+                    else if (p === V_MAN) fen += 'B';
+                    else if (p === W_KING) fen += 'K';
+                    else if (p === V_KING) fen += 'Q';
+                }
+                if (empty > 0) fen += empty;
+                if (r < 7) fen += '/';
+            }
+            fen += ' ' + (this.turn === 1 ? 'W' : 'B');
+            return fen;
+        }
+
         // ── Avaliação v4 — clean, phase-aware ────────────────────────────────
         eval() {
             const totalPieces = this.wP + this.bP + this.wK + this.bK;
@@ -2910,7 +2930,10 @@ let bookMap = null;
         if (window.electronAPI?.saveFile) {
             try {
                 const r = await window.electronAPI.saveFile({ content: txt, filename: name, filters: [{ name: 'PDN', extensions: ['pdn'] }] });
-                if (r && r.success) { txtAnalysis.innerHTML = `<span style="color:#66bb6a;">✓ Exportado: ${r.path}</span>`; return; }
+                if (r) {
+                    if (r.success) txtAnalysis.innerHTML = `<span style="color:#66bb6a;">✓ Exportado: ${r.path}</span>`;
+                    return;
+                }
             } catch(e) { /* fallback below */ }
         } else if (window.showSaveFilePicker) {
             try {
