@@ -94,6 +94,7 @@ window.onerror = function(message, source, lineno, colno, error) { console.error
     const TABLITA_MAX_GAMES = 2;
     let tablitaSubMode = MODE_HVH; // sub-mode within Tablita (0-4)
     let tablitaManager = null;     // TablitaManager instance when match active
+    let tablitaGameInProgress = false; // Track if a Tablita game is actually in progress
 
     // ════════════════════════════════════════════════════════════════════════
     //  TABLITAS — Official Tablita definitions (derived from opening book)
@@ -242,7 +243,8 @@ window.onerror = function(message, source, lineno, colno, error) { console.error
         updateCoords();
 
         gameStarted = false; gameEnded = false; isComputing = false; gameResultType = null;
-        document.getElementById('modal').style.display = 'none';
+        tablitaGameInProgress = false; // Reset Tablita game progress flag on mode switch
+        document.getElementById('modal').style.display='none';
         render();
     }
 
@@ -2386,6 +2388,7 @@ let bookMap = null;
         document.getElementById('modal').style.display='flex';
         if (title==="Fim de Jogo") {
             gameEnded=true; stopClock();
+            tablitaGameInProgress = false; // Mark Tablita game as ended
             const dl=desc.toLowerCase();
             if (dl.includes('empate')||dl.includes('draw')) gameResultType='draw';
             else if (dl.includes('brancas vencem')) gameResultType='white';
@@ -2570,6 +2573,7 @@ let bookMap = null;
     function resetBoard() {
         editMode=false; document.getElementById('edit-controls').style.display='none';
         gameStarted=false; gameEnded=false; isComputing=false; gameResultType=null;
+        tablitaGameInProgress = false; // Reset Tablita game progress flag
         gameTrajectory = [];
         trajectoryPhase = 'opening';
         nonBookPlyCount = 0; // [ENG-V24-SYNC] Reset do contador de transição Livro→Motor
@@ -2617,7 +2621,8 @@ let bookMap = null;
         }
 
         // ── Tablita mode: initialize match if not already in one ──────────
-        if (cfgMode === MODE_TABLITA && !tablitaManager) {
+        // Only initialize if game hasn't started (prevent reset during ongoing game)
+        if (cfgMode === MODE_TABLITA && !tablitaManager && !gameStarted) {
             tablitaManager = new TablitaManager();
             tablitaManager.selectTablita();
             tablitaGameNum = 1;
@@ -2627,8 +2632,9 @@ let bookMap = null;
         }
 
         // ── Tablita mode: rebuild position from tablita moves ─────────────
-        // Only rebuild if game hasn't started OR game has ended (not during ongoing game)
-        if (cfgMode === MODE_TABLITA && tablitaManager && tablitaManager.currentTablita && (!gameStarted || (gameStarted && gameEnded))) {
+        // Only rebuild if game hasn't started OR game has ended (never during ongoing game)
+        // Use tablitaGameInProgress to detect ongoing games even when gameStarted is false due to navigation
+        if (cfgMode === MODE_TABLITA && tablitaManager && tablitaManager.currentTablita && !tablitaGameInProgress) {
             const notation = tablitaManager.getTablitaNotation();
             const ns = new State();
             timeLimit = parseInt(document.getElementById('cfg-time').value);
@@ -2671,6 +2677,7 @@ let bookMap = null;
             updateCoords();
 
             gameStarted = true; gameEnded = false; isComputing = false;
+            tablitaGameInProgress = true; // Mark Tablita game as in progress
             if (timeLimit > 0) {
                 clockLastStamp = Date.now(); startClock();
             }
@@ -2794,7 +2801,8 @@ let bookMap = null;
         if (editMode) { editMode=false; document.getElementById('edit-controls').style.display='none'; }
         document.getElementById('branch-modal').style.display='none';
         pendingBranchMove=null;
-        stopClock(); gameStarted=false; gameEnded=false;
+        stopClock();
+        gameStarted=false; gameEnded=false;
         currentNode=n; gameState=n.state.clone();
         lastM=n.move||null; selIdx=-1; valTgt=[];
         nonBookPlyCount = 0;
