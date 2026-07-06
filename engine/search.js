@@ -50,6 +50,14 @@ function qsearch(state, alpha, beta, ply) {
     const capMoves = state.getCapturesOnly();
     if (capMoves.length === 0) { restoreMP(poolPos); return alpha; }
 
+    // Delta pruning: skip captures that can't possibly improve alpha.
+    // In draughts max gain per capture sequence is bounded; we use a safe margin.
+    const deltaMargin = 400;
+    if (sp + deltaMargin < alpha) {
+        restoreMP(poolPos);
+        return alpha;
+    }
+
     const tte = ttProbe(state.hash);
     const hfm = tte ? tte.mv >> 6 : -1, htm = tte ? tte.mv & 0x3F : -1;
     orderMoves(capMoves, hfm, htm, ply);
@@ -95,6 +103,12 @@ function search(state, depth, alpha, beta, ply, prevFrom, prevTo) {
 
     let extension = 0;
     if (moves.length === 1 && ply < 16) extension = 1;
+    // Recapture extension: when capturing back to the same square as prev capture
+    if (extension === 0 && prevTo >= 0 && moves[0].captured.length > 0 && ply < 12) {
+        for (const m of moves) {
+            if (m.to === prevFrom && m.captured.length > 0) { extension = 1; break; }
+        }
+    }
 
     if (hfm < 0 && depth >= 3 && !hasCaptures) {
         search(state, depth - 3, alpha, beta, ply, prevFrom, prevTo);
@@ -156,8 +170,9 @@ function search(state, depth, alpha, beta, ply, prevFrom, prevTo) {
             let lmrR = 0;
             if (isQuiet && depth >= 3 && i >= 2) {
                 lmrR = Math.max(1, Math.floor(Math.log(depth) * Math.log(i + 1) / 2.2));
-                if (depth >= 5 && i >= 5) lmrR = Math.min(lmrR + 1, depth - 2);
-                if (depth >= 8 && i >= 10) lmrR = Math.min(lmrR + 1, depth - 2);
+                if (!isPV && depth >= 4) lmrR += 1;
+                if (depth >= 6 && i >= 6) lmrR = Math.min(lmrR + 2, depth - 2);
+                if (depth >= 9 && i >= 12) lmrR = Math.min(lmrR + 1, depth - 2);
             }
             score = -search(state, depth - 1 - lmrR, -alpha - 1, -alpha, ply + 1, m.from, m.to);
             if (!searchAborted && score > alpha && (lmrR > 0 || isPV)) {
@@ -217,6 +232,7 @@ function getBestMove(state, maxDepth, timeLimitMs, bookProbeFn) {
     searchStartTime = Date.now(); searchTimeLimitMs = timeLimitMs || 0;
 
     let bestMove = moves[0], bestScore = -Infinity, reachedDepth = 0;
+    let stableCount = 0, stableMove = moves[0];
 
     for (let depth = 1; depth <= maxDepth; depth++) {
         if (depth > 2) {
@@ -240,10 +256,18 @@ function getBestMove(state, maxDepth, timeLimitMs, bookProbeFn) {
         const tte = ttProbe(state.hash);
         if (tte && (tte.mv >> 6) >= 0) {
             const f = moves.find(m => m.from === (tte.mv >> 6) && m.to === (tte.mv & 0x3F));
-            if (f) { bestMove = f; bestScore = score; }
+            if (f) { 
+                bestMove = f; bestScore = score;
+                if (depth >= 4 && f === stableMove) { stableCount++; } 
+                else { stableCount = 0; stableMove = f; }
+            }
             else if (score > bestScore) bestScore = score;
-        } else if (score > bestScore) { bestScore = score; }
+        } else if (score > bestScore) { bestScore = score; stableCount = 0; }
         reachedDepth = depth;
+        // Stability pruning: if best move unchanged for 3+ plies at depth >= 8 and low time, stop
+        if (stableCount >= 3 && depth >= 6 && searchTimeLimitMs > 0) {
+            if (Date.now() - searchStartTime > searchTimeLimitMs * 0.4) break;
+        }
     }
 
     {

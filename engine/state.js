@@ -226,7 +226,7 @@ class State {
         const { wP, bP, wK, bK } = this;
         const endgameLimit = (() => {
             if (wP === 0 && bP === 0) {
-                if (wK === 1 && bK === 1) return 9;
+                if (wK === 1 && bK === 1) return 10;
                 if (wK <= 2 && bK <= 2 && wK >= 1 && bK >= 1) return 10;
                 if ((wK === 3 && bK === 1) || (bK === 3 && wK === 1)) {
                     const loneColor = wK === 1 ? W_KING : V_KING;
@@ -330,9 +330,7 @@ class State {
         if (this.halfMoveClock >= 40)
             return "Empate: 20 lances consecutivos de damas sem captura ou movimento de pedra (CBD).";
         if (this.isEndgame && this.endgameClock >= this.endgameLimit)
-            return this.endgameLimit === 4
-                ? "Empate: limite de 2 lances em 1 Dama × 1 Dama (CBD Art.59.D)."
-                : "Empate: limite de 5 lances no final (CBD Art.59.E/F).";
+            return "Empate: limite de 5 lances no final (CBD Art.99/100).";
         if (this.hashHist.length >= 9) {
             const cur = this.hash; let cnt = 0;
             for (const h of this.hashHist) if (h === cur) cnt++;
