@@ -2718,7 +2718,8 @@ let bookMap = null;
         } else {
             isCPU = (cfgMode===MODE_HVM&&gameState.turn===-1)||(cfgMode===MODE_MVH&&gameState.turn===1)||cfgMode===MODE_MVM;
         }
-        if (isCPU&&cfgMode!==MODE_SAND&&!isAnalysisOn) return;
+        // [ENG-V32-FLEX] Allow user to create variations freely even during CPU's turn, overriding it
+        // if (isCPU&&cfgMode!==MODE_SAND&&!isAnalysisOn) return;
         const m=valTgt.find(m=>m.to===idx);
         if (m) { exec(m); return; }
         if (gameState.board[idx]!==EMPTY&&Math.sign(gameState.board[idx])===gameState.turn) {
