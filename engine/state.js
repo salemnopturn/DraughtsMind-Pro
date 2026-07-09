@@ -272,8 +272,13 @@ class State {
         })();
 
         if (endgameLimit > 0) {
-            if (!this.isEndgame) { this.isEndgame = true; this.endgameClock = 0; this.endgameLimit = endgameLimit; }
-            else { this.endgameClock++; this.endgameLimit = endgameLimit; }
+            // Reinicia o clock se: (a) nunca estava em modo final, OU (b) ocorreu uma captura
+            // (captura altera o material e invalida a contagem anterior — CBD Art.99/100)
+            if (!this.isEndgame || m.captured.length > 0) {
+                this.isEndgame = true; this.endgameClock = 0; this.endgameLimit = endgameLimit;
+            } else {
+                this.endgameClock++; this.endgameLimit = endgameLimit;
+            }
         } else {
             this.isEndgame = false; this.endgameClock = 0; this.endgameLimit = 10;
         }
