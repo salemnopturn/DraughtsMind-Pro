@@ -18,23 +18,19 @@ function storeKiller(ply, m) {
 
 function scoreMove(m, hfm, htm, ply) {
     const hk = m.from * 64 + m.to;
-    if (m.from === hfm && m.to === htm) return 1000000;
-    if (m.captured.length > 0) return 100000 + m.captured.length * 1000 + (m.capKings || 0) * 100 + (m.promo ? 50 : 0);
-    if (m.promo) return 95000;
+    if (m.from === hfm && m.to === htm) return 10000000;
+    if (m.captured.length > 0) return 1000000 + m.captured.length * 10000 + (m.capKings || 0) * 1000 + (m.promo ? 500 : 0);
+    if (m.promo) return 950000;
     const idx = ply * 2;
-    if (hk === killers[idx] || hk === killers[idx + 1]) return 90000;
-    return histTable[hk] || 0;
+    if (hk === killers[idx] || hk === killers[idx + 1]) return 900000;
+    return 1000 + (histTable[hk] || 0);
 }
 
 function orderMoves(moves, hfm, htm, ply) {
-    for (let i = 1; i < moves.length; i++) {
-        const key = moves[i], ks = scoreMove(key, hfm, htm, ply);
-        let j = i - 1;
-        while (j >= 0 && scoreMove(moves[j], hfm, htm, ply) < ks) {
-            moves[j + 1] = moves[j]; j--;
-        }
-        moves[j + 1] = key;
+    for (let i = 0; i < moves.length; i++) {
+        moves[i]._score = scoreMove(moves[i], hfm, htm, ply);
     }
+    moves.sort((a, b) => b._score - a._score);
 }
 
 function qsearch(state, alpha, beta, ply) {
@@ -46,23 +42,24 @@ function qsearch(state, alpha, beta, ply) {
     if (sp >= beta) return beta;
     if (sp > alpha) alpha = sp;
 
+    // Stand pat delta pruning: if even the best capture can't improve alpha, stop
+    const bestPossibleGain = 200 + (state.turn === 1 ? state.wK : state.bK) * 100;
+    if (sp + bestPossibleGain < alpha) return alpha;
+
     const poolPos = saveMP();
     const capMoves = state.getCapturesOnly();
     if (capMoves.length === 0) { restoreMP(poolPos); return alpha; }
-
-    // Delta pruning: skip captures that can't possibly improve alpha.
-    // In draughts max gain per capture sequence is bounded; we use a safe margin.
-    const deltaMargin = 400;
-    if (sp + deltaMargin < alpha) {
-        restoreMP(poolPos);
-        return alpha;
-    }
 
     const tte = ttProbe(state.hash);
     const hfm = tte ? tte.mv >> 6 : -1, htm = tte ? tte.mv & 0x3F : -1;
     orderMoves(capMoves, hfm, htm, ply);
 
-    for (const m of capMoves) {
+    for (let i = 0; i < capMoves.length; i++) {
+        const m = capMoves[i];
+        // Delta pruning per capture: skip if capture can't possibly raise alpha
+        const gainEstimate = m.captured.length * 100 + (m.capKings || 0) * 100 + (m.promo ? 100 : 0);
+        if (sp + gainEstimate + 50 < alpha && i > 0) continue;
+
         const undo = state.makeMove(m);
         const sc = -qsearch(state, -beta, -alpha, ply + 1);
         state.unmakeMove(m, undo);
@@ -89,7 +86,7 @@ function search(state, depth, alpha, beta, ply, prevFrom, prevTo) {
     if (tte) {
         hfm = tte.mv >> 6; htm = tte.mv & 0x3F;
         if (!isPV && tte.dp >= depth) {
-            const tsc = tte.sc;
+            const tsc = tte.sc * 20;
             if (tte.fl === TE) return tsc;
             if (tte.fl === TL && tsc >= beta) return beta;
             if (tte.fl === TU && tsc <= alpha) return alpha;
@@ -103,12 +100,14 @@ function search(state, depth, alpha, beta, ply, prevFrom, prevTo) {
 
     let extension = 0;
     if (moves.length === 1 && ply < 16) extension = 1;
-    // Recapture extension: when capturing back to the same square as prev capture
     if (extension === 0 && prevTo >= 0 && moves[0].captured.length > 0 && ply < 12) {
         for (const m of moves) {
             if (m.to === prevFrom && m.captured.length > 0) { extension = 1; break; }
         }
     }
+
+    // Check extension: extend when in check (tactical position)
+    if (extension === 0 && hasCaptures && moves.length <= 3 && ply < 20) extension = 1;
 
     if (hfm < 0 && depth >= 3 && !hasCaptures) {
         search(state, depth - 3, alpha, beta, ply, prevFrom, prevTo);
@@ -155,10 +154,17 @@ function search(state, depth, alpha, beta, ply, prevFrom, prevTo) {
         if (!isPV && isQuiet && depth <= 5 && quietCount >= LMP_TABLE[Math.min(depth, 5)]) break;
         if (isQuiet) quietCount++;
 
-        if (!isPV && depth <= 3 && i >= 2 && isQuiet && bestScore > -8000 && alpha > -8000) {
+        // Futility pruning: skip quiet moves that can't possibly improve alpha
+        if (!isPV && depth <= 3 && i >= 3 && isQuiet && bestScore > -8000 && alpha > -8000) {
             if (staticEval === null) staticEval = state.eval();
-            const margin = [0, 120, 220, 340][depth];
+            const margin = [0, 150, 280, 420][depth];
             if (staticEval + margin <= alpha) continue;
+        }
+
+        // Late move pruning: skip late quiet moves at low depth
+        if (!isPV && depth <= 3 && i >= 5 && isQuiet && bestScore > -8000) {
+            if (staticEval === null) staticEval = state.eval();
+            if (staticEval + 200 <= alpha) continue;
         }
 
         const undo = state.makeMove(m);

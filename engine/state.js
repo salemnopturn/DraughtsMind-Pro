@@ -223,10 +223,15 @@ class State {
         if (m.captured.length > 0 || m.isPawn) this.halfMoveClock = 0;
         else this.halfMoveClock++;
 
+        // Returns 0 (not endgame), or N (endgame draw after N half-moves)
+        // CBD Art.99: 2D×1D, 1D×1D, (1D+1P)×1D, etc = draw after 5 moves (10 half-moves)
+        // CBD Art.100: 3D×1D, (2D+1P)×1D, (1D+2P)×1D with lone king on main diagonal = draw after 5 moves (10 half-moves)
         const { wP, bP, wK, bK } = this;
         const endgameLimit = (() => {
             if (wP === 0 && bP === 0) {
+                // Art.99: 1D×1D — empate em 5 lances (10 meios-lances)
                 if (wK === 1 && bK === 1) return 10;
+                // Art.99: 2D×1D, 1D×2D — empate em 5 lances
                 if (wK <= 2 && bK <= 2 && wK >= 1 && bK >= 1) return 10;
                 if ((wK === 3 && bK === 1) || (bK === 3 && wK === 1)) {
                     const loneColor = wK === 1 ? W_KING : V_KING;
@@ -345,46 +350,167 @@ class State {
     }
 
     eval() {
-        const totalPieces = this.wP + this.bP + this.wK + this.bK;
+        const { wP, bP, wK, bK, board, turn } = this;
+        const totalPieces = wP + bP + wK + bK;
+        if (totalPieces === 0) return 0;
         const ph = Math.min(totalPieces, 24);
-        const kv = 300 + (24 - ph) * 6;
-        let sc = (this.wP - this.bP) * 100 + (this.wK - this.bK) * kv;
 
-        let wMob = 0, bMob = 0;
+        // Dynamic king value: more valuable in endgames
+        const kv = 300 + (24 - ph) * 8;
+        let sc = (wP - bP) * 100 + (wK - bK) * kv;
+
+        // Count friendly pawns for adjacency checks
+        const wPawnAt = new Uint8Array(64);
+        const bPawnAt = new Uint8Array(64);
+        const wKingAt = new Uint8Array(64);
+        const bKingAt = new Uint8Array(64);
 
         for (let i = 0; i < 64; i++) {
-            const p = this.board[i];
-            if (p === 0) continue;
-            const sign = Math.sign(p);
-            const r = i >> 3, c = i & 7;
-            const isWhite = sign === 1;
+            const p = board[i];
+            if (p === W_MAN) wPawnAt[i] = 1;
+            else if (p === V_MAN) bPawnAt[i] = 1;
+            else if (p === W_KING) wKingAt[i] = 1;
+            else if (p === V_KING) bKingAt[i] = 1;
+        }
 
+        let wMob = 0, bMob = 0;
+        let wAdvanced = 0, bAdvanced = 0;
+        let wConnected = 0, bConnected = 0;
+        let wPassed = 0, bPassed = 0;
+        let wKingSafety = 0, bKingSafety = 0;
+
+        for (let i = 0; i < 64; i++) {
+            const p = board[i];
+            if (p === 0) continue;
+            const r = i >> 3, c = i & 7;
+            const isWhite = (p > 0);
+
+            // ── PST bonuses ──
             if (p === W_MAN) sc += PST_M[i];
             else if (p === V_MAN) sc -= PST_M[63 - i];
             else if (p === W_KING) sc += PST_K[i];
             else if (p === V_KING) sc -= PST_K[63 - i];
 
+            // ── Edge penalty (kings are worse on edges) ──
             if (c === 0 || c === 7) {
-                const edgePen = 7 + ((24 - ph) >> 1);
-                sc += isWhite ? -edgePen : edgePen;
-            }
-            const centerBonus = 8 + ((24 - ph) >> 2);
-            if (CENTER_BIG.has(i))      sc += isWhite ? centerBonus + 3 : -(centerBonus + 3);
-            else if (CENTER_SM.has(i))  sc += isWhite ? centerBonus : -centerBonus;
-
-            const inOppHalf = (isWhite && r >= 3) || (!isWhite && r <= 4);
-            if (inOppHalf) {
+                const edgePen = 5 + ((24 - ph) >> 2);
                 if (Math.abs(p) === 2) {
-                    if (isWhite) wMob += 2; else bMob += 2;
+                    sc += isWhite ? -edgePen * 2 : edgePen * 2;
                 } else {
-                    if (isWhite) wMob++; else bMob++;
+                    sc += isWhite ? -edgePen : edgePen;
+                }
+            }
+
+            // ── Center control ──
+            const centerBonus = 8 + ((24 - ph) >> 2);
+            if (CENTER_BIG.has(i)) sc += isWhite ? centerBonus + 3 : -(centerBonus + 3);
+            else if (CENTER_SM.has(i)) sc += isWhite ? centerBonus : -centerBonus;
+
+            // ── Advanced pawns (closer to promotion = more valuable) ──
+            if (Math.abs(p) === 1) {
+                const advance = isWhite ? r : (7 - r);
+                const advBonus = [0, 0, 5, 12, 22, 35, 55, 0][advance];
+                if (isWhite) wAdvanced += advBonus; else bAdvanced += advBonus;
+
+                // Passed pawn detection: no enemy pawns blocking or ahead
+                let passed = true;
+                for (let pr = isWhite ? r + 1 : 0; pr <= (isWhite ? 7 : r - 1); pr++) {
+                    const pi = pr * 8 + c;
+                    if (pi >= 0 && pi < 64 && board[pi] === (isWhite ? V_MAN : W_MAN)) {
+                        passed = false; break;
+                    }
+                }
+                if (passed) {
+                    const passBonus = 10 + advance * 8;
+                    if (isWhite) wPassed += passBonus; else bPassed += passBonus;
+                }
+
+                // Connected pawns (adjacent friendly pawns protect each other)
+                const adj = [[r-1,c-1],[r-1,c+1],[r,c-1],[r,c+1],[r+1,c-1],[r+1,c+1]];
+                for (const [ar, ac] of adj) {
+                    if (ar >= 0 && ar < 8 && ac >= 0 && ac < 8) {
+                        const ai = ar * 8 + ac;
+                        if (board[ai] === (isWhite ? W_MAN : V_MAN)) {
+                            if (isWhite) wConnected += 4; else bConnected += 4;
+                            break;
+                        }
+                    }
+                }
+
+                // Isolated pawn penalty (no friendly pawns on adjacent columns)
+                let isolated = true;
+                for (let dc = -1; dc <= 1; dc++) {
+                    if (dc === 0) continue;
+                    const nc = c + dc;
+                    if (nc < 0 || nc > 7) continue;
+                    for (let nr = 0; nr < 8; nr++) {
+                        const ni = nr * 8 + nc;
+                        if (board[ni] === (isWhite ? W_MAN : V_MAN)) {
+                            isolated = false; break;
+                        }
+                    }
+                    if (!isolated) break;
+                }
+                if (isolated) sc += isWhite ? -12 : 12;
+
+                // Back rank defense: pawns on row 1 (white) or row 6 (black)
+                if ((isWhite && r === 0) || (!isWhite && r === 7)) sc += isWhite ? 8 : -8;
+
+            } else {
+                // ── King evaluation ──
+                if (Math.abs(p) === 2) {
+                    // King centralization (more important in endgames)
+                    const centerDist = Math.abs(r - 3.5) + Math.abs(c - 3.5);
+                    const kingCenterBonus = Math.round((7 - centerDist) * (3 + (24 - ph) / 4));
+                    if (isWhite) wKingSafety += kingCenterBonus; else bKingSafety += kingCenterBonus;
+
+                    // King on edge is worse in endgames
+                    if (c === 0 || c === 7) {
+                        const edgePen = 3 + (24 - ph) / 3;
+                        sc += isWhite ? -Math.round(edgePen) : Math.round(edgePen);
+                    }
+
+                    // Mobility: kings in opponent half contribute more
+                    const inOppHalf = (isWhite && r >= 3) || (!isWhite && r <= 4);
+                    if (inOppHalf) {
+                        if (isWhite) wMob += 3; else bMob += 3;
+                    } else {
+                        if (isWhite) wMob += 1; else bMob += 1;
+                    }
+
+                    // King safety: avoid being close to opponent pawns
+                    for (let dr = -2; dr <= 2; dr++) {
+                        for (let dc = -2; dc <= 2; dc++) {
+                            const nr = r + dr, nc = c + dc;
+                            if (nr >= 0 && nr < 8 && nc >= 0 && nc < 8) {
+                                const ni = nr * 8 + nc;
+                                const ep = board[ni];
+                                if (isWhite && ep === V_MAN) sc -= 5;
+                                else if (!isWhite && ep === W_MAN) sc += 5;
+                            }
+                        }
+                    }
                 }
             }
         }
 
+        // ── Combine positional terms ──
+        sc += (wAdvanced - bAdvanced);
+        sc += (wConnected - bConnected);
+        sc += (wPassed - bPassed);
         sc += (wMob - bMob) * 3;
+        sc += (wKingSafety - bKingSafety);
 
-        return this.turn === 1 ? sc : -sc;
+        // ── Mobility bonus (actual move count advantage) ──
+        // This is a rough proxy: pieces in opponent half contribute more
+        const wMobility = wMob;
+        const bMobility = bMob;
+        sc += (wMobility - bMobility) * 2;
+
+        // ── Tempo bonus (having the move is worth ~15-25 centipawns) ──
+        sc += 12;
+
+        return turn === 1 ? sc : -sc;
     }
 
     setBoardFromArray(boardArray, turn) {

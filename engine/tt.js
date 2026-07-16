@@ -1,60 +1,59 @@
 "use strict";
 
+// ═══════════════════════════════════════════════════════════════════════════
+// tt.js — Transposition Table for DraughtsMind Pro Engine
+// Synchronized with renderer/scripts/app.js TT implementation
+// ═══════════════════════════════════════════════════════════════════════════
+
 const TTS = 1 << 18;
 const TE = 0, TL = 1, TU = 2;
+// Layout: tt0/hash, tt1/data (primary), tt2/hash, tt3/data (secondary)
 const tt0 = new Uint32Array(TTS), tt1 = new Uint32Array(TTS);
 const tt2 = new Uint32Array(TTS), tt3 = new Uint32Array(TTS);
-let ttGen = 0;
 
-function ttPack(depth, score, from, to, flag) {
-    const sc = Math.max(-9999, Math.min(9999, Math.round(score / 20)));
-    return ((from & 0x3F) << 6 | (to & 0x3F)) | ((sc & 0x3FF) << 12) | (((depth + 128) & 0xFF) << 22) | ((flag & 0x3) << 30);
+// data layout(32 bits): move(12) | score_scaled(10) | depth(8+128) | flag(2)
+function ttPack(mv, sc, dp, fl) {
+    const d = (dp + 128) & 0xFF;
+    const s = Math.round(Math.max(-512, Math.min(511, sc / 20))) & 0x3FF;
+    const m = mv & 0xFFF;
+    const f = fl & 3;
+    return m | (s << 12) | (d << 22) | (f << 30);
 }
 
-function ttUnpack(data) {
-    const mv = data & 0xFFF;
-    const sc = ((data >> 12) & 0x3FF);
-    const dp = ((data >> 22) & 0xFF) - 128;
-    const fl = (data >> 30) & 0x3;
-    return { mv, sc: (sc << 1) - 9999 + 9999 ? (sc >= 512 ? sc - 1024 : sc) : sc, dp, fl };
-}
-
-function ttUnpackScore(data) {
-    const raw = (data >> 12) & 0x3FF;
-    return (raw >= 512 ? raw - 1024 : raw) * 20;
+function ttUnpack(v) {
+    return {
+        mv: v & 0xFFF,
+        sc: (((v >> 12) & 0x3FF) << 22) >> 22,
+        dp: ((v >> 22) & 0xFF) - 128,
+        fl: (v >> 30) & 3,
+    };
 }
 
 function ttStore(hash, depth, score, from, to, flag) {
-    const idx = Number(hash & BigInt(TTS - 1));
-    const data = ttPack(depth, score, from, to, flag);
-    const age = (ttGen & 0xF) << 24;
-    if ((tt0[idx] & 0xFF000000) <= age || depth >= ((tt0[idx] >> 22) & 0xFF) - 128) {
-        tt2[idx] = tt0[idx]; tt3[idx] = tt1[idx];
-        tt0[idx] = data | age; tt1[idx] = Number(hash >> 32n) & 0xFFFFFFFF;
+    const i = Number(hash & BigInt(TTS - 1));
+    const hh = Number(hash >> 32n);
+    const mv = (from << 6) | to;
+    const v = ttPack(mv, score, depth, flag);
+    const e0d = ((tt1[i] >> 22) & 0xFF) - 128;
+    if (depth >= e0d) {
+        // Preserve old slot 0 in slot 1 before overwriting (aging-friendly)
+        tt2[i] = tt0[i]; tt3[i] = tt1[i];
+        tt0[i] = hh; tt1[i] = v;
     } else {
-        tt2[idx] = data | age; tt3[idx] = Number(hash >> 32n) & 0xFFFFFFFF;
+        tt2[i] = hh; tt3[i] = v;
     }
 }
 
 function ttProbe(hash) {
-    const idx = Number(hash & BigInt(TTS - 1));
-    const h1 = Number(hash >> 32n) & 0xFFFFFFFF;
-    if (tt1[idx] === h1) {
-        const d = ttUnpack(tt0[idx]);
-        d.sc = ttUnpackScore(tt0[idx]);
-        return d;
-    }
-    if (tt3[idx] === h1) {
-        const d = ttUnpack(tt2[idx]);
-        d.sc = ttUnpackScore(tt2[idx]);
-        return d;
-    }
+    const i = Number(hash & BigInt(TTS - 1));
+    const hh = Number(hash >> 32n);
+    if (tt0[i] === hh) return ttUnpack(tt1[i]);
+    if (tt2[i] === hh) return ttUnpack(tt3[i]);
     return null;
 }
 
 function ttClear() {
     tt0.fill(0); tt1.fill(0); tt2.fill(0); tt3.fill(0);
-    ttGen++;
 }
 
-module.exports = { TTS, TE, TL, TU, ttStore, ttProbe, ttClear, ttGen: () => ttGen };
+module.exports = { TTS, TE, TL, TU, ttStore, ttProbe, ttClear };
