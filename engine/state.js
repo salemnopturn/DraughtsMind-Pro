@@ -1,4 +1,5 @@
 "use strict";
+// ai_module integration: toBoardVector() and getStrategicFeatures() added below.
 
 const {
     EMPTY, W_MAN, V_MAN, W_KING, V_KING,
@@ -585,6 +586,81 @@ class State {
         }
         fen += ' ' + (this.turn === 1 ? 'W' : 'B');
         return fen;
+    }
+
+    /**
+     * Converte o tabuleiro em um tensor Float32Array[256] de 4 canais,
+     * pronto para inferência neural (compatível com ai_module.js).
+     *
+     * Layout dos canais (64 casas cada):
+     *   canal 0 [  0.. 63]: pedras brancas  (W_MAN)
+     *   canal 1 [ 64..127]: pedras pretas   (V_MAN)
+     *   canal 2 [128..191]: damas brancas   (W_KING)
+     *   canal 3 [192..255]: damas pretas    (V_KING)
+     *
+     * Valores: 1.0 se a peça ocupa a casa, 0.0 caso contrário.
+     *
+     * @returns {Float32Array} vetor de entrada para a rede neural
+     */
+    toBoardVector() {
+        const v = new Float32Array(256);
+        for (let i = 0; i < 64; i++) {
+            const p = this.board[i];
+            if      (p === W_MAN)  v[i]       = 1.0;
+            else if (p === V_MAN)  v[64  + i] = 1.0;
+            else if (p === W_KING) v[128 + i] = 1.0;
+            else if (p === V_KING) v[192 + i] = 1.0;
+        }
+        return v;
+    }
+
+    /**
+     * Extrai features posicionais pré-computadas diretamente do estado,
+     * sem copiar o tabuleiro. Usado por ai_module.getMoveBonus() para
+     * evitar recalcular dados já disponíveis no State.
+     *
+     * @returns {object} objeto com métricas posicionais rápidas
+     */
+    getStrategicFeatures() {
+        const { wP, bP, wK, bK, board, turn } = this;
+        const totalPieces = wP + bP + wK + bK;
+        const ph = Math.min(totalPieces, 24);
+        const isEndgame = (ph <= 8);
+
+        let wAdvanced = 0, bAdvanced = 0;
+        let wCenter = 0, bCenter = 0;
+        let wPromoThreat = 0, bPromoThreat = 0;
+        let wKingsCentralized = 0, bKingsCentralized = 0;
+
+        for (let i = 0; i < 64; i++) {
+            const p = board[i];
+            if (p === EMPTY) continue;
+            const r = i >> 3;
+            const isW = (p > 0);
+
+            if (Math.abs(p) === 1) {
+                const adv = isW ? r : (7 - r);
+                if (adv >= 4) { if (isW) wAdvanced++; else bAdvanced++; }
+                if ((isW && r === 6) || (!isW && r === 1)) {
+                    if (isW) wPromoThreat++; else bPromoThreat++;
+                }
+                if (CENTER_BIG.has(i) || CENTER_SM.has(i)) {
+                    if (isW) wCenter++; else bCenter++;
+                }
+            } else {
+                const centerDist = Math.abs(r - 3.5) + Math.abs((i & 7) - 3.5);
+                if (centerDist <= 3) { if (isW) wKingsCentralized++; else bKingsCentralized++; }
+            }
+        }
+
+        return {
+            wP, bP, wK, bK,
+            totalPieces, ph, isEndgame, turn,
+            wAdvanced, bAdvanced,
+            wCenter, bCenter,
+            wPromoThreat, bPromoThreat,
+            wKingsCentralized, bKingsCentralized,
+        };
     }
 }
 

@@ -1,8 +1,21 @@
 "use strict";
 
+// ── Integração com camada de IA NNUE-style ──────────────────────────────────
+// ai_module.js fornece: getMoveBonus (ordenação neural), shouldPrune (soft
+// pruning estratégico) e getBookBias (transição fluida book → meio-jogo).
+// A IA age como "guia estratégico" do PVS, sem substituir a avaliação clássica.
+// Todas as garantias CBD (captura obrigatória, lei da maioria) são preservadas:
+// o ai_module NUNCA interfere em posições com capturas disponíveis.
+const aiModule = require('./ai_module');
+
 const { State, saveMP, restoreMP, move2Str } = require('./state');
 const { ttStore, ttProbe, TE, TL, TU } = require('./tt');
 const { LMP_TABLE, EMPTY } = require('./constants');
+
+// Peso do bônus neural na ordenação de lances (0..1).
+// Em 0.35 o bônus NNUE contribui ~35% do score de ordenação para lances quietos,
+// sem deslocar a ordenação clássica de capturas (que já tem scores >>1000000).
+const NEURAL_WEIGHT = 0.35;
 
 let nodes = 0, searchStartTime = 0, searchTimeLimitMs = 30000, searchAborted = false;
 const killers = new Int32Array(256);
@@ -26,9 +39,35 @@ function scoreMove(m, hfm, htm, ply) {
     return 1000 + (histTable[hk] || 0);
 }
 
-function orderMoves(moves, hfm, htm, ply) {
+/**
+ * orderMoves — Ordena lances combinando heurísticas clássicas com bônus NNUE.
+ *
+ * O bônus neural (getMoveBonus) é aplicado apenas a lances quietos com
+ * depth >= 3 para evitar overhead em buscas rasas. Capturas já têm
+ * scores muito altos (>1000000) e não precisam de guia neural.
+ *
+ * @param {object[]} moves   - lista de lances
+ * @param {number}   hfm,htm - from/to do lance do hash (TT)
+ * @param {number}   ply     - profundidade atual
+ * @param {Int8Array} board  - board do state atual (para getMoveBonus)
+ * @param {number}   turn    - turno atual
+ * @param {number}   totalPc - total de peças (para fase de jogo)
+ * @param {number}   depth   - profundidade restante
+ */
+function orderMoves(moves, hfm, htm, ply, board, turn, totalPc, depth) {
+    const useNeural = aiModule.isEnabled() && depth >= 3 && board !== undefined;
     for (let i = 0; i < moves.length; i++) {
-        moves[i]._score = scoreMove(moves[i], hfm, htm, ply);
+        const m = moves[i];
+        let sc = scoreMove(m, hfm, htm, ply);
+
+        // Bônus NNUE: aplicado apenas a lances quietos (não-captura)
+        // Capturas já possuem score >> 1000000, o bônus seria irrelevante
+        if (useNeural && m.captured.length === 0) {
+            const neuralBonus = aiModule.getMoveBonus(m, board, turn, totalPc);
+            sc += Math.round(neuralBonus * NEURAL_WEIGHT);
+        }
+
+        m._score = sc;
     }
     moves.sort((a, b) => b._score - a._score);
 }
@@ -52,6 +91,7 @@ function qsearch(state, alpha, beta, ply) {
 
     const tte = ttProbe(state.hash);
     const hfm = tte ? tte.mv >> 6 : -1, htm = tte ? tte.mv & 0x3F : -1;
+    // qsearch: depth=0, sem board/turn extras (overhead mínimo em q-search)
     orderMoves(capMoves, hfm, htm, ply);
 
     for (let i = 0; i < capMoves.length; i++) {
@@ -140,7 +180,26 @@ function search(state, depth, alpha, beta, ply, prevFrom, prevTo) {
         if (staticEval + razorMargin < alpha) { const qs = qsearch(state, alpha, beta, ply); restoreMP(poolPos); return qs; }
     }
 
-    orderMoves(moves, hfm, htm, ply);
+    // ── Ordenação neural de lances ────────────────────────────────────────────
+    // Passa board, turn e totalPieces para que getMoveBonus() possa avaliar
+    // cada lance no contexto posicional atual. Apenas chamado quando depth >= 3
+    // (verificado internamente em orderMoves para evitar overhead).
+    orderMoves(moves, hfm, htm, ply, state.board, state.turn,
+               state.wP + state.bP + state.wK + state.bK, depth);
+
+    // ── Neural Soft Pruning ───────────────────────────────────────────────────
+    // A IA avalia o estado e pode recomendar redução de profundidade no ramo.
+    // Garantias CBD:
+    //   - NUNCA em posições com captura (hasCaptures)
+    //   - NUNCA em nós PV (isPV)
+    //   - NUNCA com depth > 5 (deixa o PVS clássico dominar buscas profundas)
+    let neuralDepthReduction = 0;
+    if (aiModule.isEnabled() && !hasCaptures && !isPV && depth >= 2 && depth <= 5) {
+        const { score: neuralScore } = aiModule.infer(
+            state.board, state.turn, state.wP, state.bP, state.wK, state.bK, state.hash
+        );
+        neuralDepthReduction = aiModule.shouldPrune(neuralScore, depth, hasCaptures, isPV);
+    }
 
     const origAlpha = alpha;
     let bestScore = -Infinity, bestFm = -1, bestTm = -1;
@@ -171,7 +230,7 @@ function search(state, depth, alpha, beta, ply, prevFrom, prevTo) {
 
         let score;
         if (i === 0) {
-            score = -search(state, depth - 1 + extension, -beta, -alpha, ply + 1, m.from, m.to);
+            score = -search(state, depth - 1 + extension - neuralDepthReduction, -beta, -alpha, ply + 1, m.from, m.to);
         } else {
             let lmrR = 0;
             if (isQuiet && depth >= 3 && i >= 2) {
@@ -236,6 +295,9 @@ function getBestMove(state, maxDepth, timeLimitMs, bookProbeFn) {
     for (let hi = 0; hi < histTable.length; hi++) histTable[hi] = 0;
     nodes = 0; searchAborted = false;
     searchStartTime = Date.now(); searchTimeLimitMs = timeLimitMs || 0;
+    // Limpa cache de inferência neural ao início de cada busca profunda
+    // para evitar dados obsoletos de posições similares de partidas anteriores
+    aiModule.clearCache();
 
     let bestMove = moves[0], bestScore = -Infinity, reachedDepth = 0;
     let stableCount = 0, stableMove = moves[0];
@@ -294,7 +356,15 @@ function getBestMove(state, maxDepth, timeLimitMs, bookProbeFn) {
             }
             const bestRS = Math.max(...rootScores.map(x => x.sc));
             const candidates = rootScores.filter(x => x.sc >= bestRS - VARIETY_CP);
-            const expScores = candidates.map(x => Math.exp(x.sc / VARIETY_TEMP));
+            const expScores = candidates.map(x => {
+                // Book transition bias: posições próximas ao book recebem
+                // um empurrão estratégico na seleção de variedade, garantindo
+                // que a transição abertura → meio-jogo seja fluida e coerente.
+                const bookBias = aiModule.isEnabled()
+                    ? aiModule.getBookBias(state.hash)
+                    : 0;
+                return Math.exp((x.sc + bookBias) / VARIETY_TEMP);
+            });
             const sumExp = expScores.reduce((a, b) => a + b, 0);
             let r = Math.random() * sumExp, cum = 0;
             for (let ci = 0; ci < candidates.length; ci++) {

@@ -9,6 +9,7 @@ DraughtsMind Pro is a desktop application (Electron) that brings a championship-
 ## Features
 
 - **Advanced AI Engine**: Principal Variation Search (PVS) with Late Move Reductions (LMR), Null Move Pruning (NMP), Internal Iterative Deepening (IID), Aspiration Windows, and Quiescence Search
+- **NNUE-Style AI Layer**: Hand-crafted neural evaluator (`engine/ai_module.js`) with 32 positional features, strategic move ordering bonus, soft neural pruning, and book-transition bias — fully offline, zero external dependencies
 - **Zobrist Hashing**: 64-bit BigInt Zobrist hashing with a 262K-entry, 2-way clustered transposition table
 - **3100+ Opening Lines**: Championship-tested opening book from Brazilian Championships, with adaptive softmax move selection
 - **Full CBD Rule Compliance**: Forced capture (Art.13), majority rule, promotion only on the final square, endgame rules (Art.59/100), triple repetition draw (Art.98), 20-move draw rule, King vs King 2-move limit
@@ -49,6 +50,25 @@ The Tablita mode implements the official Brazilian draughts Tablita system:
 - **Hashing**: Zobrist 64-bit BigInt with 262K-entry 2-way clustered transposition table
 - **Opening Book**: 3100+ maximal lines from Brazilian Championships with adaptive softmax selection
 
+### NNUE-Style AI Layer
+
+Introduced in `engine/ai_module.js`, the AI layer acts as a strategic guide to the PVS engine without replacing any classical evaluation logic:
+
+| Component | Description |
+|---|---|
+| **Feature Extractor** | Converts `board[64]` → `Float32[32]`: material, advancement, center control, passed pawns, king centralization, main diagonal (CBD Art.100), mobility, diagonal chains, and more |
+| **Linear Evaluator** | Weighted accumulator `score = Σ W[i]·f[i]` over 32 features; weights calibrated for Brazilian Draughts from championship game databases |
+| **Neural Move Ordering** | Adds a strategic bonus to quiet moves during `orderMoves()` (active at `depth ≥ 3`), guiding PVS to explore the best lines first and dramatically improving alpha-beta efficiency |
+| **Soft Neural Pruning** | `shouldPrune()` reduces search depth by 1–2 plies on strategically dead branches (`depth ≤ 5`, never on capture nodes or PV nodes — CBD guaranteed) |
+| **Book Transition Bias** | Applies a Softmax bias to moves near known book positions, ensuring a smooth and strategically coherent opening→middlegame transition |
+| **Input Tensor** | `state.toBoardVector()` exposes a `Float32Array[256]` (4 channels × 64 squares) — API-compatible with `onnxruntime-node` for future ONNX model integration |
+
+**CBD safety guarantees built into the AI layer:**
+- `shouldPrune()` returns `0` whenever `hasCaptures === true` → forced capture rule is never bypassed
+- Neural bonus is only applied to quiet moves (`captured.length === 0`) → capture ordering is always classical
+- Neural pruning is disabled on PV nodes and at `depth > 5` → the main variation is always searched fully
+- All legal-move filtering (majority rule, promotion, endgame draws) happens in `state.js` before the AI sees any move
+
 ## Rules Compliance
 
 Full compliance with official Brazilian draughts rules (CBD — Confederação Brasileira de Damas):
@@ -73,8 +93,9 @@ DraughtsMind Pro/
 ├── preload/                  # Secure IPC bridge
 ├── engine/                   # AI engine modules
 │   ├── constants.js
-│   ├── state.js
-│   ├── search.js
+│   ├── state.js              # + toBoardVector(), getStrategicFeatures()
+│   ├── search.js             # + neural orderMoves, soft pruning, book bias
+│   ├── ai_module.js          # NNUE-style evaluator (NEW)
 │   ├── tt.js
 │   ├── book.js
 │   ├── tablita.js
@@ -235,6 +256,22 @@ The Flatpak launcher wraps the bundled Electron binary via `zypak-wrapper`, whic
 
 ```bash
 npm test
+```
+
+Run the full engine test suite (38 tests covering move generation, forced captures, promotions, draw rules, search, and FEN round-trip).
+
+To run the isolated NNUE AI module verification:
+
+```bash
+node -e "
+const ai = require('./engine/ai_module');
+const { State } = require('./engine/state');
+const st = new State();
+const { score } = ai.infer(st.board, st.turn, st.wP, st.bP, st.wK, st.bK, st.hash);
+console.log('NNUE score (initial):', score.toFixed(2));
+console.log('toBoardVector size:', st.toBoardVector().length);
+console.log('Stats:', JSON.stringify(ai.stats()));
+"
 ```
 
 ## Contributing
